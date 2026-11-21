@@ -81,14 +81,25 @@
           </div>
         </div>
 
-        <!-- Tab Upload Lagu Lokal -->
+        <!-- Tab Upload Lagu Lokal + Riwayat High Score -->
         <div id="localTab" class="tab-content">
           <label for="audioFileInput" class="upload-box">
             <div class="upload-icon">🎵</div>
-            <strong id="uploadedFileName">Ketuk untuk pilih lagu dari HP / Laptop</strong>
-            <span>Format .MP3, .WAV, .OGG, .M4A • 100% Offline</span>
+            <div class="upload-text">
+              <strong id="uploadedFileName">Pilih File Lagu dari HP / Laptop</strong>
+              <span>Format .MP3, .WAV, .OGG, .M4A • 100% Offline</span>
+            </div>
           </label>
-          <input type="file" id="audioFileInput" accept="audio/*" hidden />
+          <input type="file" id="audioFileInput" accept="audio/*,.mp3,.wav,.ogg,.m4a" hidden />
+
+          <!-- Kolom Riwayat Lagu Lokal & Highest Score -->
+          <div id="localHistoryWrapper" class="local-history-wrapper hidden">
+            <div class="history-header">
+              <span>Riwayat & Rekor Lagu Lokal</span>
+              <small>Pilih ulang file jika ingin main lagi</small>
+            </div>
+            <div id="localHistoryList" class="history-list"></div>
+          </div>
         </div>
       </section>
 
@@ -158,9 +169,18 @@
         </div>
       </div>
 
-      <!-- Progress Bar Durasi Lagu -->
-      <div class="progress-track">
-        <div id="songProgressBar" class="progress-fill"></div>
+      <!-- Bar Nyawa (Life Bar) & Progress Lagu -->
+      <div class="bars-container">
+        <div class="life-row">
+          <span class="life-label">❤️ NYAWA</span>
+          <div class="life-track">
+            <div id="lifeBarFill" class="life-fill"></div>
+          </div>
+          <span id="lifePercentText" class="life-pct">100%</span>
+        </div>
+        <div class="progress-track" title="Progres Lagu">
+          <div id="songProgressBar" class="progress-fill"></div>
+        </div>
       </div>
 
       <div class="canvas-wrapper" id="canvasWrapper">
@@ -171,12 +191,12 @@
           <span id="countdownText">3</span>
         </div>
 
-        <!-- Feedback Teks Melayang -->
+        <!-- Feedback Teks Melayang (PERFECT / GOOD / MISS x2) -->
         <div id="hitFeedback" class="hit-feedback"></div>
       </div>
     </section>
 
-    <!-- Modal Hasil Akhir Permainan -->
+    <!-- Modal Hasil Akhir / Game Over -->
     <div id="resultModal" class="modal hidden">
       <div class="modal-content result-box">
         <div id="resultRank" class="result-rank">S</div>
@@ -189,16 +209,20 @@
             <strong id="finalScore">0</strong>
           </div>
           <div class="stat-item">
+            <span>Highest Score</span>
+            <strong id="finalHighScore" class="text-cyan">0</strong>
+          </div>
+          <div class="stat-item">
             <span>Max Combo</span>
-            <strong id="finalMaxCombo">0</strong>
+            <strong id="finalMaxCombo">0x</strong>
           </div>
           <div class="stat-item">
-            <span>Perfect</span>
-            <strong id="finalPerfect" class="text-cyan">0</strong>
-          </div>
-          <div class="stat-item">
-            <span>Good / Miss</span>
-            <strong><span id="finalGood" class="text-green">0</span> / <span id="finalMiss" class="text-rose">0</span></strong>
+            <span>Perfect / Good / Miss</span>
+            <strong>
+              <span id="finalPerfect" class="text-cyan">0</span> /
+              <span id="finalGood" class="text-green">0</span> /
+              <span id="finalMiss" class="text-rose">0</span>
+            </strong>
           </div>
         </div>
 
