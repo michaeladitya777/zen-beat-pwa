@@ -1,9 +1,24 @@
-// Konfigurasi Utama Aplikasi
+// Konfigurasi Utama Aplikasi & Lokasi File Audio Server
 const APP_CONFIG = {
   trialDurationMs: 3 * 24 * 60 * 60 * 1000, // 3 Hari (72 Jam)
   minSongDurationSec: 30,                   // Minimal 30 detik
   maxSongDurationSec: 10 * 60,              // Maksimal 10 menit (600 detik)
   storageKeyPrefix: 'zenbeat_v1_',
+  // Seluruh file audio dikelola dari folder server / proyek Anda
+  serverAudio: {
+    menuTheme: 'assets/audio/theme-menu.mp3',
+    sfx: {
+      tap: 'assets/audio/sfx/tap.mp3',
+      perfect: 'assets/audio/sfx/perfect.mp3',
+      slide: 'assets/audio/sfx/slide.mp3',
+      miss: 'assets/audio/sfx/miss.mp3',
+      scoreTick: 'assets/audio/sfx/score-tick.mp3'
+    },
+    bgm: {
+      clear: 'assets/audio/bgm/clear.mp3',
+      gameover: 'assets/audio/bgm/gameover.mp3'
+    }
+  },
   levels: {
     easy: {
       name: 'Mode Santuy',
@@ -11,11 +26,11 @@ const APP_CONFIG = {
       color: '#38bdf8',
       rgb: '56, 189, 248',
       speed: 280,
-      cooldown: 660,
+      cooldown: 640,
       doubleChance: 0,
       holdChance: 0.14,
       slideChance: 0.1,
-      beatThreshold: 175,
+      beatThreshold: 172,
       missDamage: 7
     },
     normal: {
@@ -24,24 +39,24 @@ const APP_CONFIG = {
       color: '#34d399',
       rgb: '52, 211, 153',
       speed: 390,
-      cooldown: 440,
+      cooldown: 430,
       doubleChance: 0.05,
       holdChance: 0.18,
       slideChance: 0.15,
-      beatThreshold: 160,
+      beatThreshold: 158,
       missDamage: 9
     },
     hard: {
-      name: 'Mode Kebut Semalam',
+      name: 'Kebut Semalam',
       short: 'HARD',
       color: '#fb923c',
       rgb: '251, 146, 60',
       speed: 520,
-      cooldown: 250,
+      cooldown: 245,
       doubleChance: 0.14,
       holdChance: 0.22,
       slideChance: 0.18,
-      beatThreshold: 145,
+      beatThreshold: 144,
       missDamage: 10
     },
     extreme: {
@@ -54,7 +69,7 @@ const APP_CONFIG = {
       doubleChance: 0.28,
       holdChance: 0.22,
       slideChance: 0.22,
-      beatThreshold: 132,
+      beatThreshold: 130,
       missDamage: 12
     }
   }
@@ -66,22 +81,20 @@ const appState = {
   firstLaunch: null,
   isActivated: false,
   selectedSource: 'builtin',
-  selectedSongId: 'lofi-chill',
+  selectedSongId: 'hujan-sore',
+  selectedSongSrc: 'assets/audio/songs/hujan-sore.mp3',
   selectedSongTitle: 'Hujan Sore di Kantor',
-  selectedSongBpm: 95,
   localAudioBlob: null,
   selectedLevel: 'easy',
   audioOffset: 0,
   sfxEnabled: true,
-  bgmEnabled: true,
-  customPerfectUrl: null,
-  customMissUrl: null
+  bgmEnabled: true
 };
 
-// --- 1. INDEXEDDB (LISENSI, LAGU LOKAL & CUSTOM SFX) ---
+// --- 1. INDEXEDDB (LISENSI & LAGU LOKAL) ---
 function openAppDB() {
   return new Promise((resolve, reject) => {
-    const request = indexedDB.open('ZenBeatAppDB', 3);
+    const request = indexedDB.open('ZenBeatAppDB', 4);
     request.onupgradeneeded = (e) => {
       const db = e.target.result;
       if (!db.objectStoreNames.contains('meta')) {
@@ -89,9 +102,6 @@ function openAppDB() {
       }
       if (!db.objectStoreNames.contains('songs')) {
         db.createObjectStore('songs', { keyPath: 'title' });
-      }
-      if (!db.objectStoreNames.contains('sfx')) {
-        db.createObjectStore('sfx', { keyPath: 'type' });
       }
     };
     request.onsuccess = () => resolve(request.result);
@@ -156,56 +166,6 @@ async function getSongBlobFromDB(title) {
   }
 }
 
-async function saveCustomSfxToDB(type, file) {
-  try {
-    const db = await openAppDB();
-    const tx = db.transaction('sfx', 'readwrite');
-    tx.objectStore('sfx').put({ type, blob: file, name: file.name });
-  } catch (err) {
-    console.warn('Gagal menyimpan custom SFX:', err);
-  }
-}
-
-async function loadCustomSfxFromDB() {
-  try {
-    const db = await openAppDB();
-    const tx = db.transaction('sfx', 'readonly');
-    const store = tx.objectStore('sfx');
-
-    const perfReq = store.get('perfect');
-    perfReq.onsuccess = () => {
-      if (perfReq.result && perfReq.result.blob) {
-        appState.customPerfectUrl = URL.createObjectURL(perfReq.result.blob);
-        document.getElementById('customPerfectName').textContent = perfReq.result.name;
-      }
-    };
-
-    const missReq = store.get('miss');
-    missReq.onsuccess = () => {
-      if (missReq.result && missReq.result.blob) {
-        appState.customMissUrl = URL.createObjectURL(missReq.result.blob);
-        document.getElementById('customMissName').textContent = missReq.result.name;
-      }
-    };
-  } catch (err) {
-    console.warn('Load SFX fallback:', err);
-  }
-}
-
-async function clearCustomSfxDB() {
-  try {
-    const db = await openAppDB();
-    const tx = db.transaction('sfx', 'readwrite');
-    tx.objectStore('sfx').clear();
-  } catch {}
-  if (appState.customPerfectUrl) URL.revokeObjectURL(appState.customPerfectUrl);
-  if (appState.customMissUrl) URL.revokeObjectURL(appState.customMissUrl);
-  appState.customPerfectUrl = null;
-  appState.customMissUrl = null;
-  document.getElementById('customPerfectName').textContent = 'Default';
-  document.getElementById('customMissName').textContent = 'Default';
-}
-
 function generateDeviceId() {
   const randomPart = Math.random().toString(36).substring(2, 8).toUpperCase();
   const timePart = Date.now().toString(36).slice(-4).toUpperCase();
@@ -230,7 +190,6 @@ async function initTrialAndDevice() {
   const activated = await getPersistedValue('isActivated');
   appState.isActivated = activated === 'true' || activated === true;
 
-  // Muat pengaturan offset & SFX
   const savedOffset = localStorage.getItem(APP_CONFIG.storageKeyPrefix + 'offset');
   if (savedOffset) {
     appState.audioOffset = Number(savedOffset);
@@ -242,8 +201,6 @@ async function initTrialAndDevice() {
   appState.sfxEnabled = savedSfx !== 'false';
   document.getElementById('sfxToggleCheckbox').checked = appState.sfxEnabled;
 
-  await loadCustomSfxFromDB();
-
   document.getElementById('deviceIdDisplay').textContent = deviceId;
   document.getElementById('paywallDeviceId').textContent = deviceId;
 
@@ -254,7 +211,7 @@ async function initTrialAndDevice() {
 function updateTrialUI() {
   const badge = document.getElementById('trialBadge');
   if (appState.isActivated) {
-    badge.textContent = '★ Versi Permanen';
+    badge.textContent = '★ Permanen';
     badge.classList.add('activated');
     return true;
   }
@@ -272,82 +229,95 @@ function updateTrialUI() {
   const daysLeft = Math.floor(hoursLeft / 24);
   const remHours = hoursLeft % 24;
 
-  badge.textContent = `Trial: ${daysLeft}h ${remHours}j tersisa`;
+  badge.textContent = `Trial ${daysLeft}h ${remHours}j`;
   return true;
 }
 
-// --- 2. THEME SONG MENU UTAMA (AMBIENT LO-FI BGM) & PREVIEW MUSIK ---
-const menuThemeManager = {
-  audioCtx: null,
-  intervalId: null,
-  isPlaying: false,
-  step: 0,
+// --- 2. SERVER AUDIO MANAGER (THEME SONG, RESULT BGM & SERVER SFX) ---
+const serverAudioManager = {
+  menuAudio: null,
+  resultAudio: null,
+  sfxPool: {},
 
-  start() {
-    if (this.isPlaying || !appState.bgmEnabled) return;
-    if (document.getElementById('gameScreen').classList.contains('active')) return;
-
-    const AudioContext = window.AudioContext || window.webkitAudioContext;
-    this.audioCtx = new AudioContext();
-    if (this.audioCtx.state === 'suspended') {
-      this.audioCtx.resume().catch(() => {});
-    }
-
-    this.isPlaying = true;
-    this.step = 0;
-
-    // Progresi akor Lo-Fi yang menenangkan pikiran saat membuka aplikasi
-    const chords = [
-      [261.63, 329.63, 392.00, 493.88], // Cmaj7
-      [220.00, 261.63, 329.63, 392.00], // Am7
-      [174.61, 220.00, 261.63, 349.23], // Fmaj7
-      [196.00, 246.94, 293.66, 392.00]  // G6
-    ];
-
-    const playAmbientStep = () => {
-      if (!this.isPlaying || !appState.bgmEnabled) return;
-      const now = this.audioCtx.currentTime;
-      const chord = chords[this.step % chords.length];
-
-      chord.forEach((freq, idx) => {
-        const osc = this.audioCtx.createOscillator();
-        const gain = this.audioCtx.createGain();
-        osc.type = 'sine';
-        osc.frequency.setValueAtTime(freq, now + idx * 0.06);
-
-        gain.gain.setValueAtTime(0.0001, now + idx * 0.06);
-        gain.gain.linearRampToValueAtTime(0.025, now + idx * 0.06 + 0.4);
-        gain.gain.exponentialRampToValueAtTime(0.0001, now + 2.6);
-
-        osc.connect(gain);
-        gain.connect(this.audioCtx.destination);
-        osc.start(now + idx * 0.06);
-        osc.stop(now + 2.7);
-      });
-
-      this.step++;
-    };
-
-    playAmbientStep();
-    this.intervalId = setInterval(playAmbientStep, 2800);
+  init() {
+    // Siapkan pool SFX dari folder server
+    Object.entries(APP_CONFIG.serverAudio.sfx).forEach(([key, src]) => {
+      const audio = new Audio(src);
+      audio.preload = 'auto';
+      this.sfxPool[key] = audio;
+    });
   },
 
-  stop() {
-    this.isPlaying = false;
-    if (this.intervalId) {
-      clearInterval(this.intervalId);
-      this.intervalId = null;
+  startMenuTheme() {
+    if (!appState.bgmEnabled) return;
+    if (document.getElementById('gameScreen').classList.contains('active')) return;
+    this.stopResultMusic();
+
+    if (!this.menuAudio) {
+      this.menuAudio = new Audio(APP_CONFIG.serverAudio.menuTheme);
+      this.menuAudio.loop = true;
+      this.menuAudio.volume = 0.55;
     }
-    if (this.audioCtx) {
-      this.audioCtx.close().catch(() => {});
-      this.audioCtx = null;
+    this.menuAudio.play().catch(() => {});
+  },
+
+  stopMenuTheme() {
+    if (this.menuAudio) {
+      this.menuAudio.pause();
+      this.menuAudio.currentTime = 0;
     }
+  },
+
+  playResultMusic(isGameOver) {
+    this.stopMenuTheme();
+    this.stopResultMusic();
+    const src = isGameOver
+      ? APP_CONFIG.serverAudio.bgm.gameover
+      : APP_CONFIG.serverAudio.bgm.clear;
+
+    this.resultAudio = new Audio(src);
+    this.resultAudio.volume = 0.7;
+    this.resultAudio.play().catch(() => {});
+  },
+
+  stopResultMusic() {
+    if (this.resultAudio) {
+      this.resultAudio.pause();
+      this.resultAudio.currentTime = 0;
+      this.resultAudio = null;
+    }
+  },
+
+  playSfx(type, audioCtxFallback = null) {
+    if (!appState.sfxEnabled) return;
+    const baseAudio = this.sfxPool[type];
+    if (baseAudio && baseAudio.readyState >= 2) {
+      const clone = baseAudio.cloneNode();
+      clone.volume = type === 'scoreTick' ? 0.35 : 0.8;
+      clone.play().catch(() => {});
+      return;
+    }
+
+    // Fallback WebAudio ringan bila file .mp3 belum diunggah ke server
+    if (!audioCtxFallback) return;
+    const now = audioCtxFallback.currentTime;
+    const osc = audioCtxFallback.createOscillator();
+    const gain = audioCtxFallback.createGain();
+    osc.type = type === 'miss' ? 'sawtooth' : 'triangle';
+    const freqMap = { perfect: 1046, slide: 1318, tap: 660, miss: 130, scoreTick: 880 };
+    osc.frequency.setValueAtTime(freqMap[type] || 660, now);
+    gain.gain.setValueAtTime(0.05, now);
+    gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.09);
+    osc.connect(gain);
+    gain.connect(audioCtxFallback.destination);
+    osc.start(now);
+    osc.stop(now + 0.1);
   }
 };
 
+// Preview Lagu (Baik Lagu Server MP3 maupun Lagu Lokal HP/PC)
 const previewManager = {
   audioEl: null,
-  audioCtx: null,
   timer: null,
   url: null,
 
@@ -364,68 +334,37 @@ const previewManager = {
       URL.revokeObjectURL(this.url);
       this.url = null;
     }
-    if (this.audioCtx) {
-      this.audioCtx.close().catch(() => {});
-      this.audioCtx = null;
+  },
+
+  playPreviewFromSrcOrBlob(source) {
+    serverAudioManager.stopMenuTheme();
+    this.stop();
+    if (!source) return;
+
+    if (source instanceof Blob) {
+      this.url = URL.createObjectURL(source);
+      this.audioEl = new Audio(this.url);
+    } else {
+      this.audioEl = new Audio(source);
     }
-  },
 
-  playBuiltinPreview(songId, bpm) {
-    menuThemeManager.stop();
-    this.stop();
-    const AudioContext = window.AudioContext || window.webkitAudioContext;
-    this.audioCtx = new AudioContext();
-    const now = this.audioCtx.currentTime;
-    const beatSec = 60 / bpm;
-
-    const previewNotes = {
-      'lofi-chill': [261.63, 329.63, 392.00, 493.88, 392.00, 329.63],
-      'night-drive': [146.83, 220.00, 293.66, 349.23, 293.66, 220.00],
-      'coffee-rush': [164.81, 246.94, 329.63, 392.00, 493.88, 392.00]
-    };
-
-    const notes = previewNotes[songId] || previewNotes['lofi-chill'];
-    notes.forEach((freq, idx) => {
-      const osc = this.audioCtx.createOscillator();
-      const gain = this.audioCtx.createGain();
-      osc.type = songId === 'lofi-chill' ? 'sine' : 'triangle';
-      const startTime = now + idx * (beatSec * 0.65);
-      osc.frequency.setValueAtTime(freq, startTime);
-
-      gain.gain.setValueAtTime(0.001, startTime);
-      gain.gain.exponentialRampToValueAtTime(0.06, startTime + 0.04);
-      gain.gain.exponentialRampToValueAtTime(0.0001, startTime + beatSec * 0.8);
-
-      osc.connect(gain);
-      gain.connect(this.audioCtx.destination);
-      osc.start(startTime);
-      osc.stop(startTime + beatSec * 0.85);
-    });
-
-    this.timer = setTimeout(() => {
-      this.stop();
-      menuThemeManager.start();
-    }, 4000);
-  },
-
-  playLocalPreview(blob) {
-    menuThemeManager.stop();
-    this.stop();
-    if (!blob) return;
-    this.url = URL.createObjectURL(blob);
-    this.audioEl = new Audio(this.url);
     this.audioEl.volume = 0.65;
-
     this.audioEl.addEventListener('loadedmetadata', () => {
       if (this.audioEl && this.audioEl.duration > 15) {
-        this.audioEl.currentTime = Math.min(this.audioEl.duration * 0.2, 30);
+        this.audioEl.currentTime = Math.min(this.audioEl.duration * 0.2, 25);
       }
       this.audioEl.play().catch(() => {});
     });
 
+    // Jika gagal memuat (misalnya file MP3 server belum diupload), kembalikan theme menu
+    this.audioEl.addEventListener('error', () => {
+      this.stop();
+      serverAudioManager.startMenuTheme();
+    });
+
     this.timer = setTimeout(() => {
       this.stop();
-      menuThemeManager.start();
+      serverAudioManager.startMenuTheme();
     }, 6000);
   }
 };
@@ -514,7 +453,7 @@ function renderLocalHistory() {
     div.innerHTML = `
       <div class="history-title-row">
         <strong>🎵 ${item.title}</strong>
-        ${isSelected ? '<span class="history-active-pill">Dipilih</span>' : ''}
+        ${isSelected ? '<span class="history-active-pill">DIPILIH</span>' : ''}
       </div>
       <div class="history-scores-grid">
         ${badgesHtml}
@@ -524,7 +463,7 @@ function renderLocalHistory() {
     div.addEventListener('click', async () => {
       const savedBlob = await getSongBlobFromDB(item.title);
       if (!savedBlob) {
-        alert('File audio tidak ditemukan di memori aplikasi. Silakan pilih ulang file lagunya.');
+        alert('File audio tidak ditemukan di memori perangkat. Silakan pilih ulang file lagunya.');
         document.getElementById('audioFileInput').click();
         return;
       }
@@ -533,19 +472,16 @@ function renderLocalHistory() {
       appState.localAudioBlob = savedBlob;
       appState.selectedSongTitle = item.title;
 
-      const box = document.getElementById('uploadBoxLabel');
-      box.classList.add('has-file');
       document.getElementById('uploadedFileName').textContent = `✅ ${item.title}`;
-
       renderLocalHistory();
-      previewManager.playLocalPreview(savedBlob);
+      previewManager.playPreviewFromSrcOrBlob(savedBlob);
     });
 
     listEl.appendChild(div);
   });
 }
 
-// --- 4. MESIN GAME (2-LANE SLIDE, PULSE TARGET LINE, CUSTOM SFX & HOLD) ---
+// --- 4. MESIN GAME (REAL-TIME BEAT SYNC PULSE, 2-LANE SLIDE & GRADE SSS-F) ---
 class RhythmEngine {
   constructor() {
     this.canvas = document.getElementById('gameCanvas');
@@ -554,23 +490,21 @@ class RhythmEngine {
     this.isPaused = false;
     this.animFrameId = null;
 
-    // Audio
+    // Audio & Real-Time Beat Analyser
     this.audioCtx = null;
     this.analyser = null;
     this.dataArray = null;
     this.audioEl = null;
     this.localObjectUrl = null;
-    this.synthInterval = null;
-    this.synthStep = 0;
 
-    // Visual & Pulse Effects
+    // Visual & Real-Time Beat Pulse
     this.notes = [];
     this.particles = [];
     this.shockwaves = [];
     this.laneFlashes = [0, 0, 0, 0];
     this.padPressScale = [1, 1, 1, 1];
     this.comboPulse = 1;
-    this.beatPulse = 0; // Intensitas kedipan garis target sesuai tempo
+    this.beatPulse = 0; // 100% dikendalikan oleh energi bass beat lagu asli
     this.shakeIntensity = 0;
     this.visualizerBars = new Array(16).fill(0);
 
@@ -578,12 +512,11 @@ class RhythmEngine {
     this.activeTouches = new Map();
     this.activeKeys = new Set();
 
-    // Timing
+    // Timing & Energy Tracking
     this.lastSpawnTime = 0;
     this.lastFrameTime = 0;
-    this.lastEnergy = 0;
-    this.builtinElapsedSec = 0;
-    this.songDuration = 45;
+    this.lastBassEnergy = 0;
+    this.songDuration = 60;
 
     // Skor, Nyawa & Streaks
     this.life = 100;
@@ -711,7 +644,8 @@ class RhythmEngine {
   }
 
   async start() {
-    menuThemeManager.stop();
+    serverAudioManager.stopMenuTheme();
+    serverAudioManager.stopResultMusic();
     previewManager.stop();
     this.stop();
     this.resizeCanvas();
@@ -734,9 +668,7 @@ class RhythmEngine {
     this.badCount = 0;
     this.missCount = 0;
     this.lastSpawnTime = 0;
-    this.lastEnergy = 0;
-    this.builtinElapsedSec = 0;
-    this.synthStep = 0;
+    this.lastBassEnergy = 0;
     this.beatPulse = 0;
 
     this.updateScoreHUD();
@@ -750,10 +682,17 @@ class RhythmEngine {
       await this.audioCtx.resume();
     }
 
-    if (appState.selectedSource === 'local' && appState.localAudioBlob) {
-      await this.setupLocalAudio(appState.localAudioBlob);
-    } else {
-      this.setupBuiltinSynth(appState.selectedSongId, appState.selectedSongBpm);
+    // Baik Lagu Bawaan Server maupun Lagu Lokal kini diputar melalui Real-Time Beat Analyser!
+    const audioSource = appState.selectedSource === 'local'
+      ? appState.localAudioBlob
+      : appState.selectedSongSrc;
+
+    const loaded = await this.setupAudioStream(audioSource);
+    if (!loaded) {
+      alert(`File lagu "${appState.selectedSongSrc}" belum ditemukan di folder server/proyek Anda.\nPastikan Anda sudah meletakkan file .mp3 tersebut sesuai path.`);
+      document.getElementById('gameScreen').classList.remove('active');
+      document.getElementById('menuScreen').classList.add('active');
+      return;
     }
 
     this.isRunning = true;
@@ -762,13 +701,47 @@ class RhythmEngine {
     this.loop(this.lastFrameTime);
   }
 
+  async setupAudioStream(source) {
+    try {
+      if (source instanceof Blob) {
+        this.localObjectUrl = URL.createObjectURL(source);
+        this.audioEl = new Audio(this.localObjectUrl);
+      } else {
+        this.audioEl = new Audio(source);
+      }
+      this.audioEl.crossOrigin = 'anonymous';
+
+      await new Promise((resolve, reject) => {
+        this.audioEl.addEventListener('canplaythrough', resolve, { once: true });
+        this.audioEl.addEventListener('error', reject, { once: true });
+        this.audioEl.load();
+      });
+
+      const trackNode = this.audioCtx.createMediaElementSource(this.audioEl);
+      this.analyser = this.audioCtx.createAnalyser();
+      this.analyser.fftSize = 256; // Resolusi frekuensi lebih tajam untuk deteksi beat
+      this.analyser.smoothingTimeConstant = 0.55;
+      this.dataArray = new Uint8Array(this.analyser.frequencyBinCount);
+
+      trackNode.connect(this.analyser);
+      this.analyser.connect(this.audioCtx.destination);
+
+      this.audioEl.addEventListener('ended', () => this.finishGame(false));
+      await this.audioEl.play();
+      this.songDuration = this.audioEl.duration || 120;
+      return true;
+    } catch (err) {
+      console.warn('Gagal memuat stream lagu:', err);
+      return false;
+    }
+  }
+
   pause() {
     if (!this.isRunning || this.isPaused) return;
     this.isPaused = true;
     this.activeTouches.clear();
     this.activeKeys.clear();
     if (this.animFrameId) cancelAnimationFrame(this.animFrameId);
-    if (this.synthInterval) clearInterval(this.synthInterval);
     if (this.audioEl) this.audioEl.pause();
     document.getElementById('pauseModal').classList.remove('hidden');
   }
@@ -784,227 +757,44 @@ class RhythmEngine {
     }
     if (this.audioEl) {
       await this.audioEl.play();
-    } else {
-      this.startBuiltinInterval(appState.selectedSongId, appState.selectedSongBpm);
     }
 
     this.lastFrameTime = performance.now();
     this.loop(this.lastFrameTime);
   }
 
-  async setupLocalAudio(blob) {
-    this.localObjectUrl = URL.createObjectURL(blob);
-    this.audioEl = new Audio(this.localObjectUrl);
-    this.audioEl.crossOrigin = 'anonymous';
-
-    const source = this.audioCtx.createMediaElementSource(this.audioEl);
-    this.analyser = this.audioCtx.createAnalyser();
-    this.analyser.fftSize = 128;
-    this.dataArray = new Uint8Array(this.analyser.frequencyBinCount);
-
-    source.connect(this.analyser);
-    this.analyser.connect(this.audioCtx.destination);
-
-    this.audioEl.addEventListener('ended', () => this.finishGame(false));
-    await this.audioEl.play();
-    this.songDuration = this.audioEl.duration || 120;
-  }
-
-  setupBuiltinSynth(songId, bpm) {
-    this.songDuration = 45;
-    this.startBuiltinInterval(songId, bpm);
-  }
-
-  startBuiltinInterval(songId, bpm) {
-    const beatMs = (60 / bpm) * 1000;
-    const chordsMap = {
-      'lofi-chill': [
-        [261.63, 329.63, 392.00, 493.88],
-        [220.00, 261.63, 329.63, 392.00],
-        [174.61, 220.00, 261.63, 349.23],
-        [196.00, 246.94, 293.66, 392.00]
-      ],
-      'night-drive': [
-        [146.83, 220.00, 293.66, 349.23],
-        [116.54, 174.61, 233.08, 293.66],
-        [130.81, 196.00, 261.63, 329.63],
-        [110.00, 164.81, 220.00, 261.63]
-      ],
-      'coffee-rush': [
-        [164.81, 246.94, 329.63, 392.00],
-        [130.81, 196.00, 261.63, 329.63],
-        [196.00, 246.94, 293.66, 392.00],
-        [146.83, 220.00, 293.66, 369.99]
-      ]
-    };
-
-    const chords = chordsMap[songId] || chordsMap['lofi-chill'];
-
-    const playStep = () => {
-      if (!this.isRunning || this.isPaused) return;
-      const now = this.audioCtx.currentTime;
-      const chord = chords[Math.floor(this.synthStep / 4) % chords.length];
-
-      // Kedipkan garis target bawah setiap ketukan tempo
-      this.beatPulse = 1.0;
-
-      for (let i = 0; i < this.visualizerBars.length; i++) {
-        this.visualizerBars[i] = 25 + Math.random() * 85;
-      }
-
-      if (this.synthStep % 4 === 0) {
-        chord.forEach((freq) => {
-          const osc = this.audioCtx.createOscillator();
-          const gain = this.audioCtx.createGain();
-          osc.type = songId === 'lofi-chill' ? 'sine' : 'triangle';
-          osc.frequency.setValueAtTime(freq, now);
-
-          gain.gain.setValueAtTime(0.001, now);
-          gain.gain.exponentialRampToValueAtTime(0.055, now + 0.08);
-          gain.gain.exponentialRampToValueAtTime(0.0001, now + (beatMs / 1000) * 3.8);
-
-          osc.connect(gain);
-          gain.connect(this.audioCtx.destination);
-          osc.start(now);
-          osc.stop(now + (beatMs / 1000) * 4);
-        });
-      }
-
-      const kickOsc = this.audioCtx.createOscillator();
-      const kickGain = this.audioCtx.createGain();
-      kickOsc.type = 'sine';
-      kickOsc.frequency.setValueAtTime(125, now);
-      kickOsc.frequency.exponentialRampToValueAtTime(42, now + 0.14);
-
-      kickGain.gain.setValueAtTime(0.18, now);
-      kickGain.gain.exponentialRampToValueAtTime(0.001, now + 0.16);
-
-      kickOsc.connect(kickGain);
-      kickGain.connect(this.audioCtx.destination);
-      kickOsc.start(now);
-      kickOsc.stop(now + 0.17);
-
-      const noteFreq = chord[this.synthStep % chord.length] * 2;
-      const melOsc = this.audioCtx.createOscillator();
-      const melGain = this.audioCtx.createGain();
-      melOsc.type = 'sine';
-      melOsc.frequency.setValueAtTime(noteFreq, now);
-      melGain.gain.setValueAtTime(0.04, now);
-      melGain.gain.exponentialRampToValueAtTime(0.0001, now + 0.25);
-      melOsc.connect(melGain);
-      melGain.connect(this.audioCtx.destination);
-      melOsc.start(now);
-      melOsc.stop(now + 0.26);
-
-      this.trySpawnBeatNote(performance.now(), true);
-      this.synthStep++;
-    };
-
-    playStep();
-    this.synthInterval = setInterval(playStep, beatMs);
-  }
-
-  // Sound Effect (Bisa dimatikan di Pengaturan atau diganti file audio sendiri)
-  playSoundEffect(type) {
-    if (!appState.sfxEnabled) return;
-
-    // Jika pengguna mengunggah Custom SFX sendiri
-    if ((type === 'perfect' || type === 'slide') && appState.customPerfectUrl) {
-      const sfx = new Audio(appState.customPerfectUrl);
-      sfx.volume = 0.8;
-      sfx.play().catch(() => {});
-      return;
-    }
-    if (type === 'miss' && appState.customMissUrl) {
-      const sfx = new Audio(appState.customMissUrl);
-      sfx.volume = 0.8;
-      sfx.play().catch(() => {});
-      return;
-    }
-
-    if (!this.audioCtx) return;
-    const now = this.audioCtx.currentTime;
-
-    if (type === 'perfect' || type === 'slide') {
-      const freqs = type === 'slide' ? [880, 1318.51, 1760] : [987.77, 1479.98];
-      freqs.forEach((f, i) => {
-        const osc = this.audioCtx.createOscillator();
-        const gain = this.audioCtx.createGain();
-        osc.type = 'triangle';
-        osc.frequency.setValueAtTime(f, now + i * 0.025);
-        osc.frequency.exponentialRampToValueAtTime(f * 1.04, now + 0.14);
-
-        gain.gain.setValueAtTime(0.001, now + i * 0.025);
-        gain.gain.linearRampToValueAtTime(0.09, now + i * 0.025 + 0.015);
-        gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.18);
-
-        osc.connect(gain);
-        gain.connect(this.audioCtx.destination);
-        osc.start(now + i * 0.025);
-        osc.stop(now + 0.19);
-      });
-    } else if (type === 'miss') {
-      const subOsc = this.audioCtx.createOscillator();
-      const subGain = this.audioCtx.createGain();
-      subOsc.type = 'sawtooth';
-      subOsc.frequency.setValueAtTime(140, now);
-      subOsc.frequency.exponentialRampToValueAtTime(38, now + 0.22);
-
-      subGain.gain.setValueAtTime(0.13, now);
-      subGain.gain.exponentialRampToValueAtTime(0.0001, now + 0.23);
-
-      subOsc.connect(subGain);
-      subGain.connect(this.audioCtx.destination);
-      subOsc.start(now);
-      subOsc.stop(now + 0.24);
-    } else {
-      const osc = this.audioCtx.createOscillator();
-      const gain = this.audioCtx.createGain();
-      osc.type = 'sine';
-      osc.frequency.setValueAtTime(620, now);
-      osc.frequency.exponentialRampToValueAtTime(310, now + 0.05);
-
-      gain.gain.setValueAtTime(0.06, now);
-      gain.gain.exponentialRampToValueAtTime(0.001, now + 0.055);
-
-      osc.connect(gain);
-      gain.connect(this.audioCtx.destination);
-      osc.start(now);
-      osc.stop(now + 0.06);
-    }
-  }
-
-  trySpawnBeatNote(now, forceBeat = false) {
+  // Analisis Beat Real-Time: Menggerakkan Kedipan Garis Target & Munculnya Balok Nada
+  processRealTimeBeat(now) {
+    if (!this.analyser || !this.dataArray) return;
     const levelCfg = APP_CONFIG.levels[appState.selectedLevel];
-    let isBeat = forceBeat;
 
-    if (!forceBeat && this.analyser) {
-      this.analyser.getByteFrequencyData(this.dataArray);
-      let bassSum = 0;
-      for (let i = 1; i <= 10; i++) {
-        bassSum += this.dataArray[i];
-      }
-      const bassAvg = bassSum / 10;
+    this.analyser.getByteFrequencyData(this.dataArray);
 
-      for (let i = 0; i < this.visualizerBars.length; i++) {
-        this.visualizerBars[i] = (this.dataArray[i * 2] || 0) * 0.65;
-      }
+    // Fokus pada rentang Sub-Bass & Kick Drum (bin 1 sampai 8)
+    let bassSum = 0;
+    for (let i = 1; i <= 8; i++) {
+      bassSum += this.dataArray[i];
+    }
+    const bassAvg = bassSum / 8;
 
-      if (bassAvg > levelCfg.beatThreshold && bassAvg > this.lastEnergy + 8) {
-        isBeat = true;
-        this.beatPulse = 1.0; // Garis target bawah berkedip saat beat bass lagu lokal terdeteksi
-      }
-      this.lastEnergy = bassAvg * 0.92;
+    // Update visualizer latar belakang
+    for (let i = 0; i < this.visualizerBars.length; i++) {
+      this.visualizerBars[i] = (this.dataArray[i * 2] || 0) * 0.65;
     }
 
-    if (now - this.lastSpawnTime < levelCfg.cooldown) return;
+    // Deteksi Lonjakan Beat (Onset Detection) untuk Kedipan Garis Target
+    const energyDelta = bassAvg - this.lastBassEnergy;
+    if (bassAvg > 125 && energyDelta > 9) {
+      // Intensitas kedipan garis mengikuti kekuatan hentakan beat musik secara presisi
+      this.beatPulse = Math.min(1.0, (bassAvg / 245) + (energyDelta / 60));
+    }
 
-    if (isBeat) {
+    // Spawn balok nada jika melewati ambang batas level & cooldown
+    if (now - this.lastSpawnTime >= levelCfg.cooldown && bassAvg > levelCfg.beatThreshold && energyDelta > 7) {
       const lane1 = Math.floor(Math.random() * 4);
       const roll = Math.random();
 
       if (roll < levelCfg.holdChance) {
-        // 1. NOTE HOLD (Panjang)
         const holdLength = 120 + Math.random() * 95;
         this.notes.push({
           type: 'hold',
@@ -1017,21 +807,18 @@ class RhythmEngine {
         });
         this.lastSpawnTime = now + (holdLength / levelCfg.speed) * 650;
       } else if (roll < levelCfg.holdChance + levelCfg.slideChance) {
-        // 2. NOTE SLIDE LEBAR 2 TUTS (Sangat Jelas dengan Panah Arah)
-        const startLane = Math.floor(Math.random() * 3); // 0..2 agar muat 2 tuts (startLane & startLane+1)
+        const startLane = Math.floor(Math.random() * 3);
         const dir = Math.random() < 0.5 ? -1 : 1;
-
         this.notes.push({
           type: 'slide',
           lane: startLane,
-          span: 2, // Lebar 2 tuts
+          span: 2,
           y: -30,
-          slideDir: dir, // -1 = geser kiri, 1 = geser kanan
+          slideDir: dir,
           hit: false
         });
         this.lastSpawnTime = now;
       } else {
-        // 3. NOTE TAP (Biasa)
         this.notes.push({
           type: 'tap',
           lane: lane1,
@@ -1051,6 +838,9 @@ class RhythmEngine {
         this.lastSpawnTime = now;
       }
     }
+
+    // Peluruhan energi pembanding agar mampu menangkap ketukan berikutnya dengan cepat
+    this.lastBassEnergy = bassAvg * 0.90;
   }
 
   handleLaneDown(lane) {
@@ -1065,7 +855,6 @@ class RhythmEngine {
 
     for (const note of this.notes) {
       if (note.hit || note.holding) continue;
-      // Cek apakah lane berada dalam jangkauan note (termasuk note slide yang lebarnya 2 tuts)
       const isLaneCovered = note.type === 'slide'
         ? (lane === note.lane || lane === note.lane + 1)
         : (note.lane === lane);
@@ -1123,7 +912,7 @@ class RhythmEngine {
           const isMilestone = this.perfectStreak >= 25 && this.perfectStreak % 25 === 0;
           const label = isMilestone ? `PERFECT x${this.perfectStreak}` : 'SLIDE PERFECT!';
           this.showFeedback(label, isMilestone ? 'anim-perfect-milestone' : 'anim-perfect');
-          this.playSoundEffect('slide');
+          serverAudioManager.playSfx('slide', this.audioCtx);
 
           if (this.combo > this.maxCombo) this.maxCombo = this.combo;
           this.comboPulse = 1.35;
@@ -1147,7 +936,7 @@ class RhythmEngine {
         if (tailY >= this.hitLineY - 65) {
           this.score += 80;
           this.showFeedback('HOLD CLEAR!', 'anim-good');
-          this.playSoundEffect('perfect');
+          serverAudioManager.playSfx('perfect', this.audioCtx);
           this.spawnHitEffects(lane);
           this.updateScoreHUD();
         }
@@ -1172,7 +961,7 @@ class RhythmEngine {
         : (this.perfectStreak > 1 ? `PERFECT x${this.perfectStreak}` : 'PERFECT!');
 
       this.showFeedback(label, isMilestone ? 'anim-perfect-milestone' : 'anim-perfect');
-      this.playSoundEffect('perfect');
+      serverAudioManager.playSfx('perfect', this.audioCtx);
 
       this.shakeIntensity = isMilestone ? 6.5 : 1.5;
       if (navigator.vibrate) navigator.vibrate(isMilestone ? 30 : 14);
@@ -1187,7 +976,7 @@ class RhythmEngine {
       }
 
       this.showFeedback('GOOD', 'anim-good');
-      this.playSoundEffect('tap');
+      serverAudioManager.playSfx('tap', this.audioCtx);
     } else {
       this.score += 15;
       this.combo = 0;
@@ -1195,7 +984,7 @@ class RhythmEngine {
       this.badCount++;
 
       this.showFeedback('BAD', 'anim-bad');
-      this.playSoundEffect('tap');
+      serverAudioManager.playSfx('tap', this.audioCtx);
     }
 
     if (this.combo > this.maxCombo) this.maxCombo = this.combo;
@@ -1256,7 +1045,7 @@ class RhythmEngine {
       textEl.style.color = '#f43f5e';
     } else {
       fillEl.classList.remove('danger');
-      textEl.style.color = '#f8fafc';
+      textEl.style.color = '#ffffff';
     }
   }
 
@@ -1270,9 +1059,6 @@ class RhythmEngine {
     if (this.audioEl && !isNaN(this.audioEl.duration)) {
       elapsedSec = this.audioEl.currentTime;
       this.songDuration = this.audioEl.duration;
-    } else {
-      this.builtinElapsedSec += dt;
-      elapsedSec = this.builtinElapsedSec;
     }
 
     const progressPct = Math.min(100, (elapsedSec / this.songDuration) * 100);
@@ -1283,9 +1069,8 @@ class RhythmEngine {
       return;
     }
 
-    if (appState.selectedSource === 'local') {
-      this.trySpawnBeatNote(timestamp, false);
-    }
+    // Jalankan deteksi beat real-time dari audio yang sedang berputar
+    this.processRealTimeBeat(timestamp);
 
     const levelCfg = APP_CONFIG.levels[appState.selectedLevel];
     for (const note of this.notes) {
@@ -1310,7 +1095,7 @@ class RhythmEngine {
           this.score += 100;
           this.life = Math.min(100, this.life + 3);
           this.showFeedback('HOLD PERFECT!', 'anim-perfect');
-          this.playSoundEffect('perfect');
+          serverAudioManager.playSfx('perfect', this.audioCtx);
           this.updateScoreHUD();
           this.updateLifeUI();
         }
@@ -1326,7 +1111,7 @@ class RhythmEngine {
 
           this.life = Math.max(0, this.life - levelCfg.missDamage);
           this.updateLifeUI();
-          this.playSoundEffect('miss');
+          serverAudioManager.playSfx('miss', this.audioCtx);
 
           const missLabel = this.missStreak > 1 ? `MISS x${this.missStreak}` : 'MISS';
           this.showFeedback(missLabel, 'anim-miss');
@@ -1350,7 +1135,8 @@ class RhythmEngine {
       this.visualizerBars[i] = Math.max(0, this.visualizerBars[i] - dt * 140);
     }
 
-    this.beatPulse = Math.max(0, this.beatPulse - dt * 4.2);
+    // Peluruhan kedipan garis target (turun cepat sehingga tiap beat berkedip tajam)
+    this.beatPulse = Math.max(0, this.beatPulse - dt * 6.5);
     this.comboPulse += (1 - this.comboPulse) * Math.min(1, dt * 12);
     this.shakeIntensity = Math.max(0, this.shakeIntensity - dt * 25);
 
@@ -1396,13 +1182,13 @@ class RhythmEngine {
       ctx.fillRect(i * barW + 2, this.hitLineY - barH, barW - 4, barH);
     }
 
-    // 2. Angka Combo / Miss Streak Besar di Tengah Latar Belakang
+    // 2. Angka Combo / Miss Streak
     if (this.combo > 1) {
       ctx.save();
       ctx.translate(this.width / 2, this.height * 0.33);
       ctx.scale(this.comboPulse, this.comboPulse);
 
-      ctx.font = '900 84px sans-serif';
+      ctx.font = '900 84px Outfit, sans-serif';
       ctx.textAlign = 'center';
       ctx.strokeStyle = `rgba(${levelRgb}, 0.55)`;
       ctx.lineWidth = 3;
@@ -1411,7 +1197,7 @@ class RhythmEngine {
       ctx.fillStyle = `rgba(${levelRgb}, 0.34)`;
       ctx.fillText(`${this.combo}`, 0, 0);
 
-      ctx.font = '900 15px sans-serif';
+      ctx.font = '900 15px Outfit, sans-serif';
       ctx.fillStyle = `rgba(255, 255, 255, 0.45)`;
       ctx.fillText('COMBO', 0, 24);
       ctx.restore();
@@ -1420,7 +1206,7 @@ class RhythmEngine {
       ctx.translate(this.width / 2, this.height * 0.33);
       ctx.scale(this.comboPulse, this.comboPulse);
 
-      ctx.font = '900 72px sans-serif';
+      ctx.font = '900 72px Outfit, sans-serif';
       ctx.textAlign = 'center';
       ctx.strokeStyle = 'rgba(244, 63, 94, 0.6)';
       ctx.lineWidth = 3;
@@ -1429,13 +1215,13 @@ class RhythmEngine {
       ctx.fillStyle = 'rgba(244, 63, 94, 0.32)';
       ctx.fillText(`${this.missStreak}x`, 0, 0);
 
-      ctx.font = '900 14px sans-serif';
+      ctx.font = '900 14px Outfit, sans-serif';
       ctx.fillStyle = 'rgba(244, 63, 94, 0.65)';
       ctx.fillText('MISS STREAK', 0, 22);
       ctx.restore();
     }
 
-    // 3. Jalur & Kilauan Sorotan Ketukan
+    // 3. Jalur & Sorotan Ketukan
     for (let i = 0; i < 4; i++) {
       const x = i * laneW;
       if (this.laneFlashes[i] > 0) {
@@ -1456,10 +1242,10 @@ class RhythmEngine {
       }
     }
 
-    // 4. Tuts Bawah Menyatu (Jarak Sangat Tipis 2px, Tanpa Border)
+    // 4. Tuts Bawah Menyatu (Jarak Tipis 2px)
     const keyLabels = ['D', 'F', 'J', 'K'];
     for (let i = 0; i < 4; i++) {
-      const padW = laneW - 2; // Jarak antar tuts hanya 2px agar terlihat menyatu
+      const padW = laneW - 2;
       const padH = 56;
       const cx = i * laneW + laneW / 2;
       const cy = this.hitLineY + 14;
@@ -1477,21 +1263,21 @@ class RhythmEngine {
       ctx.fill();
 
       ctx.fillStyle = 'rgba(255, 255, 255, 0.22)';
-      ctx.font = 'bold 12px sans-serif';
+      ctx.font = 'bold 12px Outfit, sans-serif';
       ctx.textAlign = 'center';
       ctx.fillText(keyLabels[i], 0, 4);
       ctx.restore();
     }
 
-    // 5. Garis Target Semi-Transparan Berkedip Sesuai Tempo (Membantu Timing Perfect)
-    const pulseAlpha = 0.22 + this.beatPulse * 0.58;
-    const pulseWidth = 2 + this.beatPulse * 2.5;
+    // 5. Garis Target Semi-Transparan Berkedip Sesuai Deteksi Beat Bass Real-Time
+    const pulseAlpha = 0.2 + this.beatPulse * 0.72;
+    const pulseWidth = 2 + this.beatPulse * 3.5;
     ctx.save();
     ctx.strokeStyle = `rgba(${levelRgb}, ${pulseAlpha})`;
     ctx.lineWidth = pulseWidth;
-    if (this.beatPulse > 0.2) {
+    if (this.beatPulse > 0.15) {
       ctx.shadowColor = levelColor;
-      ctx.shadowBlur = 12 * this.beatPulse;
+      ctx.shadowBlur = 16 * this.beatPulse;
     }
     ctx.beginPath();
     ctx.moveTo(0, this.hitLineY);
@@ -1499,16 +1285,14 @@ class RhythmEngine {
     ctx.stroke();
     ctx.restore();
 
-    // 6. Gambar Balok Nada (Tap, Hold Panjang, dan Slide Lebar 2 Tuts)
+    // 6. Gambar Balok Nada (Tap, Hold Panjang, dan Slide 2 Tuts)
     for (const note of this.notes) {
       if (note.type === 'slide') {
-        // Balok Slide Lebar 2 Tuts (Sangat Terlihat pada Tempo Cepat)
         const x = note.lane * laneW + 4;
         const w = laneW * 2 - 8;
         const h = 34;
         const slideColor = '#facc15';
 
-        // Jejak cahaya lebar 2 tuts
         const trailGrad = ctx.createLinearGradient(0, note.y - 65, 0, note.y);
         trailGrad.addColorStop(0, 'rgba(250, 204, 21, 0)');
         trailGrad.addColorStop(1, 'rgba(250, 204, 21, 0.22)');
@@ -1523,9 +1307,8 @@ class RhythmEngine {
         ctx.fill();
         ctx.shadowBlur = 0;
 
-        // Deretan panah arah geser besar di tengah 2 tuts
-        ctx.fillStyle = '#090b12';
-        ctx.font = '900 15px sans-serif';
+        ctx.fillStyle = '#070913';
+        ctx.font = '900 15px Outfit, sans-serif';
         ctx.textAlign = 'center';
         const arrowLabel = note.slideDir === 1 ? 'GESER  ▶ ▶ ▶' : '◀ ◀ ◀  GESER';
         ctx.fillText(arrowLabel, x + w / 2, note.y + 5);
@@ -1557,12 +1340,11 @@ class RhythmEngine {
         ctx.fill();
         ctx.shadowBlur = 0;
 
-        ctx.fillStyle = '#0b0d14';
-        ctx.font = '900 10px sans-serif';
+        ctx.fillStyle = '#070913';
+        ctx.font = '900 10px Outfit, sans-serif';
         ctx.textAlign = 'center';
         ctx.fillText('HOLD', x + w / 2, headY + 3.5);
       } else {
-        // Note Tap Biasa
         const trailGrad = ctx.createLinearGradient(0, note.y - 75, 0, note.y);
         trailGrad.addColorStop(0, `rgba(${levelRgb}, 0)`);
         trailGrad.addColorStop(1, `rgba(${levelRgb}, 0.28)`);
@@ -1585,7 +1367,7 @@ class RhythmEngine {
       }
     }
 
-    // 7. Shockwave Rings & Partikel
+    // 7. Shockwaves & Partikel
     for (const sw of this.shockwaves) {
       ctx.beginPath();
       ctx.arc(sw.x, sw.y, sw.radius, 0, Math.PI * 2);
@@ -1605,8 +1387,70 @@ class RhythmEngine {
     ctx.restore();
   }
 
+  // Perhitungan Grade SSS sampai F + Animasi & SFX Penghitung Skor
+  calculateGrade(accuracy, isGameOver) {
+    if (isGameOver || accuracy < 45) return { grade: 'F', cls: 'grade-f', title: 'Gagal Fokus!' };
+    if (accuracy >= 99 && this.missCount === 0 && this.badCount === 0) {
+      return { grade: 'SSS', cls: 'grade-sss', title: 'DEWA RITME! SEMPURNA!' };
+    }
+    if (accuracy >= 96 && this.missCount === 0) {
+      return { grade: 'SS', cls: 'grade-ss', title: 'NYARIS SEMPURNA!' };
+    }
+    if (accuracy >= 90) return { grade: 'S', cls: 'grade-s', title: 'Luar Biasa! Stres Hilang!' };
+    if (accuracy >= 80) return { grade: 'A', cls: 'grade-a', title: 'Mantap! Ritmemu Stabil!' };
+    if (accuracy >= 70) return { grade: 'B', cls: 'grade-b', title: 'Bagus! Tetap Santuy!' };
+    if (accuracy >= 60) return { grade: 'C', cls: 'grade-c', title: 'Lumayan Buat Lemesin Jari!' };
+    return { grade: 'D', cls: 'grade-d', title: 'Nyaris Kalah, Coba Lagi!' };
+  }
+
+  animateScoreCounter(targetScore, highScore, gradeInfo) {
+    const scoreEl = document.getElementById('finalScore');
+    const highEl = document.getElementById('finalHighScore');
+    const rankEl = document.getElementById('resultRank');
+
+    rankEl.textContent = '?';
+    rankEl.className = 'result-rank';
+
+    const durationMs = 1150;
+    const startTime = performance.now();
+    let lastTickSound = 0;
+
+    const step = (now) => {
+      const progress = Math.min(1, (now - startTime) / durationMs);
+      // Ease-out cubic agar melambat dramatis menjelang angka akhir
+      const eased = 1 - Math.pow(1 - progress, 3);
+      const currentVal = Math.floor(eased * targetScore);
+
+      scoreEl.textContent = currentVal.toLocaleString('id-ID');
+      highEl.textContent = Math.max(currentVal, highScore).toLocaleString('id-ID');
+
+      // Putar SFX tick penghitung skor setiap 65ms selama angka berputar
+      if (targetScore > 0 && now - lastTickSound >= 65 && progress < 1) {
+        lastTickSound = now;
+        serverAudioManager.playSfx('scoreTick');
+      }
+
+      if (progress < 1) {
+        requestAnimationFrame(step);
+      } else {
+        scoreEl.textContent = targetScore.toLocaleString('id-ID');
+        highEl.textContent = highScore.toLocaleString('id-ID');
+
+        // Stempel Grade SSS - F muncul setelah skor selesai dihitung
+        rankEl.textContent = gradeInfo.grade;
+        rankEl.className = `result-rank ${gradeInfo.cls} grade-stamp`;
+        serverAudioManager.playSfx('perfect');
+      }
+    };
+
+    requestAnimationFrame(step);
+  }
+
   finishGame(isGameOver = false) {
     this.stop();
+
+    // Putar musik Game Over atau Stage Clear dari server
+    serverAudioManager.playResultMusic(isGameOver);
 
     const levelCfg = APP_CONFIG.levels[appState.selectedLevel];
     let highScore = this.score;
@@ -1619,43 +1463,21 @@ class RhythmEngine {
       localStorage.setItem(APP_CONFIG.storageKeyPrefix + key, String(highScore));
     }
 
-    const rankEl = document.getElementById('resultRank');
-    const titleEl = document.getElementById('resultTitle');
-    const subEl = document.getElementById('resultSubtitle');
+    const totalNotes = this.perfectCount + this.goodCount + this.badCount + this.missCount;
+    const accuracy = totalNotes > 0
+      ? ((this.perfectCount + this.goodCount * 0.7 + this.badCount * 0.3) / totalNotes) * 100
+      : 100;
 
-    if (isGameOver) {
-      rankEl.textContent = '💀';
-      rankEl.classList.add('gameover');
-      titleEl.textContent = 'Nyawa Habis (Game Over)!';
-      subEl.textContent = 'Cobaan terlalu deras, tarik napas dulu lalu coba lagi!';
-    } else {
-      rankEl.classList.remove('gameover');
-      const totalNotes = this.perfectCount + this.goodCount + this.badCount + this.missCount;
-      const accuracy = totalNotes > 0
-        ? ((this.perfectCount + this.goodCount * 0.7 + this.badCount * 0.3) / totalNotes) * 100
-        : 100;
+    const gradeInfo = this.calculateGrade(accuracy, isGameOver);
 
-      let rank = 'C';
-      let title = 'Lumayan Buat Lemesin Jari!';
-      if (accuracy >= 90) {
-        rank = 'S';
-        title = 'Luar Biasa! Stres Auto Hilang!';
-      } else if (accuracy >= 75) {
-        rank = 'A';
-        title = 'Mantap! Ritmemu Stabil!';
-      } else if (accuracy >= 55) {
-        rank = 'B';
-        title = 'Cukup Santuy, Coba Lagi Yuk!';
-      }
+    document.getElementById('resultTitle').textContent = isGameOver
+      ? 'Game Over!'
+      : gradeInfo.title;
+    document.getElementById('resultSubtitle').textContent = isGameOver
+      ? 'Cobaan terlalu deras, tarik napas dulu lalu coba lagi!'
+      : `Akurasi Ketukan: ${accuracy.toFixed(1)}%`;
 
-      rankEl.textContent = rank;
-      titleEl.textContent = title;
-      subEl.textContent = 'Pikiranmu sudah lebih segar sekarang.';
-    }
-
-    document.getElementById('finalScore').textContent = this.score.toLocaleString('id-ID');
     document.getElementById('finalHighScoreLabel').textContent = `High Score (${levelCfg.short})`;
-    document.getElementById('finalHighScore').textContent = highScore.toLocaleString('id-ID');
     document.getElementById('finalMaxCombo').textContent = `${this.maxCombo}x`;
     document.getElementById('finalPerfect').textContent = this.perfectCount;
     document.getElementById('finalGood').textContent = this.goodCount;
@@ -1663,6 +1485,7 @@ class RhythmEngine {
     document.getElementById('finalMiss').textContent = this.missCount;
 
     document.getElementById('resultModal').classList.remove('hidden');
+    this.animateScoreCounter(this.score, highScore, gradeInfo);
   }
 
   stop() {
@@ -1671,7 +1494,6 @@ class RhythmEngine {
     this.activeTouches.clear();
     this.activeKeys.clear();
     if (this.animFrameId) cancelAnimationFrame(this.animFrameId);
-    if (this.synthInterval) clearInterval(this.synthInterval);
     if (this.audioEl) {
       this.audioEl.pause();
       this.audioEl = null;
@@ -1696,30 +1518,31 @@ function applyThemeColor(levelKey) {
 }
 
 function setupUIEvents() {
+  serverAudioManager.init();
   rhythmEngine = new RhythmEngine();
 
-  // Mulai Theme Song otomatis saat interaksi pertama pengguna pada halaman
+  // Putar Theme Song dari server saat aplikasi pertama kali disentuh
   const unlockThemeAudio = () => {
-    menuThemeManager.start();
+    serverAudioManager.startMenuTheme();
     window.removeEventListener('pointerdown', unlockThemeAudio);
     window.removeEventListener('keydown', unlockThemeAudio);
   };
   window.addEventListener('pointerdown', unlockThemeAudio);
   window.addEventListener('keydown', unlockThemeAudio);
 
-  // Tombol Mute/Unmute Theme Song Menu di Header
+  // Tombol Mute/Unmute Theme Song Menu
   const bgmBtn = document.getElementById('bgmToggleBtn');
   bgmBtn.addEventListener('click', (e) => {
     e.stopPropagation();
     appState.bgmEnabled = !appState.bgmEnabled;
     if (appState.bgmEnabled) {
-      bgmBtn.textContent = '🎵 BGM: ON';
+      bgmBtn.textContent = '🎵 ON';
       bgmBtn.classList.remove('muted');
-      menuThemeManager.start();
+      serverAudioManager.startMenuTheme();
     } else {
-      bgmBtn.textContent = '🔇 BGM: OFF';
+      bgmBtn.textContent = '🔇 OFF';
       bgmBtn.classList.add('muted');
-      menuThemeManager.stop();
+      serverAudioManager.stopMenuTheme();
     }
   });
 
@@ -1737,26 +1560,26 @@ function setupUIEvents() {
     });
   });
 
-  // Pilih Lagu Bawaan + Putar Preview
-  document.querySelectorAll('.song-item').forEach((item) => {
+  // Pilih Lagu Bawaan Server + Preview
+  document.querySelectorAll('.song-card-3d').forEach((item) => {
     item.addEventListener('click', () => {
-      document.querySelectorAll('.song-item').forEach((el) => {
+      document.querySelectorAll('.song-card-3d').forEach((el) => {
         el.classList.remove('selected');
-        el.querySelector('.badge-check').textContent = 'Pilih';
+        el.querySelector('.status-pill').textContent = 'PILIH';
       });
       item.classList.add('selected');
-      item.querySelector('.badge-check').textContent = 'Aktif';
+      item.querySelector('.status-pill').textContent = 'AKTIF';
 
       appState.selectedSource = 'builtin';
       appState.selectedSongId = item.dataset.song;
-      appState.selectedSongBpm = Number(item.dataset.bpm) || 100;
+      appState.selectedSongSrc = item.dataset.src;
       appState.selectedSongTitle = item.querySelector('strong').textContent;
 
-      previewManager.playBuiltinPreview(appState.selectedSongId, appState.selectedSongBpm);
+      previewManager.playPreviewFromSrcOrBlob(appState.selectedSongSrc);
     });
   });
 
-  // Upload Lagu Lokal + Validasi Durasi (30 detik - 10 menit)
+  // Upload Lagu Lokal + Validasi Durasi
   const fileInput = document.getElementById('audioFileInput');
   fileInput.addEventListener('change', async (e) => {
     const file = e.target.files[0];
@@ -1770,7 +1593,7 @@ function setupUIEvents() {
     }
     if (duration > APP_CONFIG.maxSongDurationSec) {
       const mins = (duration / 60).toFixed(1);
-      alert(`Durasi lagu terlalu panjang (${mins} menit). Maksimal durasi lagu yang bisa dimainkan adalah 10 menit.`);
+      alert(`Durasi lagu terlalu panjang (${mins} menit). Maksimal durasi lagu adalah 10 menit.`);
       fileInput.value = '';
       return;
     }
@@ -1780,19 +1603,16 @@ function setupUIEvents() {
     appState.localAudioBlob = file;
     appState.selectedSongTitle = cleanTitle;
 
-    const box = document.getElementById('uploadBoxLabel');
-    box.classList.add('has-file');
     document.getElementById('uploadedFileName').textContent = `✅ ${cleanTitle}`;
-
     await saveSongBlobToDB(cleanTitle, file);
     saveLocalSongRecord(cleanTitle, appState.selectedLevel, 0);
-    previewManager.playLocalPreview(file);
+    previewManager.playPreviewFromSrcOrBlob(file);
   });
 
   // Pilih 4 Level Kesulitan
-  document.querySelectorAll('.level-card').forEach((card) => {
+  document.querySelectorAll('.level-btn-3d').forEach((card) => {
     card.addEventListener('click', () => {
-      document.querySelectorAll('.level-card').forEach((c) => c.classList.remove('selected'));
+      document.querySelectorAll('.level-btn-3d').forEach((c) => c.classList.remove('selected'));
       card.classList.add('selected');
       appState.selectedLevel = card.dataset.level;
       applyThemeColor(appState.selectedLevel);
@@ -1834,23 +1654,25 @@ function setupUIEvents() {
     rhythmEngine.stop();
     document.getElementById('gameScreen').classList.remove('active');
     document.getElementById('menuScreen').classList.add('active');
-    menuThemeManager.start();
+    serverAudioManager.startMenuTheme();
   });
 
   // Tombol di Modal Hasil Akhir
   document.getElementById('playAgainBtn').addEventListener('click', async () => {
+    serverAudioManager.stopResultMusic();
     document.getElementById('resultModal').classList.add('hidden');
     await rhythmEngine.start();
   });
 
   document.getElementById('resultMenuBtn').addEventListener('click', () => {
+    serverAudioManager.stopResultMusic();
     document.getElementById('resultModal').classList.add('hidden');
     document.getElementById('gameScreen').classList.remove('active');
     document.getElementById('menuScreen').classList.add('active');
-    menuThemeManager.start();
+    serverAudioManager.startMenuTheme();
   });
 
-  // Modal Pengaturan (SFX Toggle, Custom SFX Upload, & Delay)
+  // Modal Pengaturan
   const settingsModal = document.getElementById('settingsModal');
   document.getElementById('openSettingsBtn').addEventListener('click', () => {
     settingsModal.classList.remove('hidden');
@@ -1859,28 +1681,6 @@ function setupUIEvents() {
   document.getElementById('sfxToggleCheckbox').addEventListener('change', (e) => {
     appState.sfxEnabled = e.target.checked;
     localStorage.setItem(APP_CONFIG.storageKeyPrefix + 'sfxEnabled', String(appState.sfxEnabled));
-  });
-
-  document.getElementById('customPerfectSfxInput').addEventListener('change', async (e) => {
-    const file = e.target.files[0];
-    if (!file) return;
-    if (appState.customPerfectUrl) URL.revokeObjectURL(appState.customPerfectUrl);
-    appState.customPerfectUrl = URL.createObjectURL(file);
-    document.getElementById('customPerfectName').textContent = file.name;
-    await saveCustomSfxToDB('perfect', file);
-  });
-
-  document.getElementById('customMissSfxInput').addEventListener('change', async (e) => {
-    const file = e.target.files[0];
-    if (!file) return;
-    if (appState.customMissUrl) URL.revokeObjectURL(appState.customMissUrl);
-    appState.customMissUrl = URL.createObjectURL(file);
-    document.getElementById('customMissName').textContent = file.name;
-    await saveCustomSfxToDB('miss', file);
-  });
-
-  document.getElementById('resetSfxBtn').addEventListener('click', async () => {
-    await clearCustomSfxDB();
   });
 
   document.getElementById('offsetSlider').addEventListener('input', (e) => {
