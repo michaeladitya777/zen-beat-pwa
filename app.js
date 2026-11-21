@@ -751,19 +751,19 @@ class RhythmEngine {
     this.loop(this.lastFrameTime);
   }
 
-  async setupAudioStream(source) {
+ async setupAudioStream(source) {
     try {
       if (source instanceof Blob) {
         this.localObjectUrl = URL.createObjectURL(source);
         this.audioEl = new Audio(this.localObjectUrl);
       } else {
-        this.audioEl = new Audio(source);
+        const safeUrl = encodeURI(source);
+        this.audioEl = new Audio(safeUrl);
       }
-      this.audioEl.crossOrigin = 'anonymous';
       this.audioEl.preload = 'auto';
 
       await new Promise((resolve, reject) => {
-        const timeout = setTimeout(() => reject(new Error('Timeout memuat audio')), 6000);
+        const timeout = setTimeout(() => reject(new Error('Koneksi terlalu lambat (45 detik)')), 45000);
         this.audioEl.addEventListener('loadedmetadata', () => {
           clearTimeout(timeout);
           resolve();
