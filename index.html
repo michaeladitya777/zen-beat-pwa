@@ -3,168 +3,169 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
-  <meta name="theme-color" content="#090b12" />
-  <title>ZenBeat — Game Musik Pelepas Penat</title>
+  <meta name="theme-color" content="#070913" />
+  <title>ZenBeat — Ketuk Irama, Buang Penatmu</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@700;800;900&family=Plus+Jakarta+Sans:wght@500;600;700;800&display=swap" rel="stylesheet" />
   <link rel="manifest" href="manifest.json" />
   <link rel="stylesheet" href="style.css" />
 </head>
 <body>
-  <div class="ambient-glow" id="ambientGlow"></div>
-  <div class="ambient-glow secondary"></div>
+  <div class="ambient-orb orb-1"></div>
+  <div class="ambient-orb orb-2"></div>
 
   <div class="app-container">
-    <!-- Header & Status Trial -->
+    <!-- Header 3D Floating -->
     <header class="app-header">
       <div class="brand">
-        <div class="logo-row">
-          <div class="logo-badge">🎧</div>
-          <div>
-            <h1>Zen<span>Beat</span></h1>
-            <p class="subtitle">Ketuk irama, buang penatmu</p>
-          </div>
+        <div class="logo-3d">🎧</div>
+        <div>
+          <h1>Zen<span>Beat</span></h1>
+          <p class="subtitle">Ketuk irama, buang penatmu</p>
         </div>
       </div>
       <div class="header-actions">
         <div class="top-pills">
-          <button id="bgmToggleBtn" class="btn-bgm" title="Musik Latar Menu">🎵 BGM: ON</button>
-          <div id="trialBadge" class="trial-badge">Memuat...</div>
+          <button id="bgmToggleBtn" class="pill-3d btn-bgm" title="Theme Song Menu">🎵 ON</button>
+          <div id="trialBadge" class="pill-3d trial-badge">Memuat...</div>
         </div>
-        <button id="installBtn" class="btn-install hidden" title="Install Aplikasi">
+        <button id="installBtn" class="pill-3d btn-install hidden" title="Install Aplikasi">
           ⬇ Install App
         </button>
       </div>
     </header>
 
-    <!-- Layar Menu Utama -->
+    <!-- Layar Home Screen 3D -->
     <main id="menuScreen" class="screen active">
-      <!-- Bagian 1: Pilih Sumber Lagu -->
-      <section class="glass-panel song-section">
-        <div class="section-header">
-          <span class="step-pill">LANGKAH 1</span>
-          <h2>Pilih Musik Pengusir Penat</h2>
+      <!-- Bagian 1: Pilih Musik -->
+      <section class="surface-3d">
+        <div class="section-title-row">
+          <h2>Pilih Musik</h2>
+          <span class="step-chip">01</span>
         </div>
-        
-        <div class="song-tabs">
+
+        <div class="segmented-3d">
           <button class="tab-btn active" data-tab="builtin">🎶 Lagu Bawaan</button>
           <button class="tab-btn" data-tab="local">📁 Lagu Sendiri</button>
         </div>
 
-        <!-- Tab Lagu Bawaan -->
+        <!-- Tab Lagu Bawaan Server -->
         <div id="builtinTab" class="tab-content active">
           <div class="song-list" id="builtinSongList">
-            <div class="song-item selected" data-song="lofi-chill" data-bpm="95">
+            <div class="song-card-3d selected" data-song="hujan-sore" data-src="assets/audio/songs/hujan-sore.mp3">
               <div class="song-left">
-                <div class="song-art">🌧️</div>
+                <div class="album-3d c-cyan">🌧️</div>
                 <div class="song-info">
                   <strong>Hujan Sore di Kantor</strong>
-                  <span>Lo-Fi Chill • 95 BPM</span>
+                  <span>Lo-Fi Chill • Server Audio</span>
                 </div>
               </div>
-              <span class="badge-check">Aktif</span>
+              <span class="status-pill">AKTIF</span>
             </div>
 
-            <div class="song-item" data-song="night-drive" data-bpm="115">
+            <div class="song-card-3d" data-song="pulang-tenggo" data-src="assets/audio/songs/pulang-tenggo.mp3">
               <div class="song-left">
-                <div class="song-art">🌃</div>
+                <div class="album-3d c-purple">🌃</div>
                 <div class="song-info">
                   <strong>Pulang Tenggo</strong>
-                  <span>Synthwave • 115 BPM</span>
+                  <span>Synthwave • Server Audio</span>
                 </div>
               </div>
-              <span class="badge-check">Pilih</span>
+              <span class="status-pill">PILIH</span>
             </div>
 
-            <div class="song-item" data-song="coffee-rush" data-bpm="135">
+            <div class="song-card-3d" data-song="kopi-sachet" data-src="assets/audio/songs/kopi-sachet.mp3">
               <div class="song-left">
-                <div class="song-art">☕</div>
+                <div class="album-3d c-amber">☕</div>
                 <div class="song-info">
                   <strong>Kopi Sachet Tengah Malam</strong>
-                  <span>Upbeat Electronic • 135 BPM</span>
+                  <span>Upbeat Electronic • Server Audio</span>
                 </div>
               </div>
-              <span class="badge-check">Pilih</span>
+              <span class="status-pill">PILIH</span>
             </div>
           </div>
         </div>
 
-        <!-- Tab Upload Lagu Lokal + Riwayat High Score Per Level -->
+        <!-- Tab Upload Lagu Lokal -->
         <div id="localTab" class="tab-content">
-          <label for="audioFileInput" class="upload-box" id="uploadBoxLabel">
-            <div class="upload-icon">🎵</div>
+          <label for="audioFileInput" class="upload-card-3d" id="uploadBoxLabel">
+            <div class="upload-icon-3d">🎵</div>
             <div class="upload-text">
-              <strong id="uploadedFileName">Pilih File Lagu dari HP / Laptop</strong>
+              <strong id="uploadedFileName">Pilih Lagu dari HP / Laptop</strong>
               <span>Durasi 30 detik – 10 menit (.MP3, .WAV, .M4A)</span>
             </div>
           </label>
           <input type="file" id="audioFileInput" accept=".mp3,.wav,.ogg,.m4a,.aac,.flac" hidden />
 
-          <!-- Kolom Riwayat Lagu Lokal & Highest Score Per Level -->
           <div id="localHistoryWrapper" class="local-history-wrapper hidden">
             <div class="history-header">
               <span>Riwayat & Rekor Per Level</span>
-              <small>Ketuk lagu untuk pilih & preview</small>
+              <small>Ketuk lagu untuk pilih</small>
             </div>
             <div id="localHistoryList" class="history-list"></div>
           </div>
         </div>
       </section>
 
-      <!-- Bagian 2: Pilih Tingkat Kesulitan (4 Level) -->
-      <section class="glass-panel level-section">
-        <div class="section-header">
-          <span class="step-pill">LANGKAH 2</span>
-          <h2>Pilih Tingkat Kewarasan</h2>
+      <!-- Bagian 2: Pilih Tingkat Kesulitan (4 Level 3D) -->
+      <section class="surface-3d">
+        <div class="section-title-row">
+          <h2>Tingkat Kewarasan</h2>
+          <span class="step-chip">02</span>
         </div>
+
         <div class="level-grid">
-          <button class="level-card easy selected" data-level="easy">
-            <div class="level-header">
+          <button class="level-btn-3d easy selected" data-level="easy">
+            <div class="level-top">
               <span class="level-tag">EASY</span>
               <span class="level-emoji">🛌</span>
             </div>
             <h3>Mode Santuy</h3>
-            <p>"Baru pulang, nyawa belum kumpul."</p>
+            <p>Baru pulang, nyawa belum kumpul.</p>
           </button>
 
-          <button class="level-card normal" data-level="normal">
-            <div class="level-header">
+          <button class="level-btn-3d normal" data-level="normal">
+            <div class="level-top">
               <span class="level-tag">NORMAL</span>
               <span class="level-emoji">☕</span>
             </div>
             <h3>Mode Biasa Aja</h3>
-            <p>"Standar UMR, yang penting jalan."</p>
+            <p>Standar UMR, yang penting jalan.</p>
           </button>
 
-          <button class="level-card hard" data-level="hard">
-            <div class="level-header">
+          <button class="level-btn-3d hard" data-level="hard">
+            <div class="level-top">
               <span class="level-tag">HARD</span>
               <span class="level-emoji">🔥</span>
             </div>
-            <h3>Mode Kebut Semalam</h3>
-            <p>"Besok pagi dikumpulin, jangan kendor!"</p>
+            <h3>Kebut Semalam</h3>
+            <p>Besok pagi dikumpulin, gas terus!</p>
           </button>
 
-          <button class="level-card extreme" data-level="extreme">
-            <div class="level-header">
+          <button class="level-btn-3d extreme" data-level="extreme">
+            <div class="level-top">
               <span class="level-tag">EXTREME</span>
               <span class="level-emoji">⚡</span>
             </div>
             <h3>Mode WNI</h3>
-            <p>"Mental baja. Badai cobaan bersamaan!"</p>
+            <p>Mental baja, badai cobaan bersamaan!</p>
           </button>
         </div>
       </section>
 
-      <!-- Tombol Mulai & Pengaturan -->
+      <!-- Tombol Utama 3D -->
       <div class="bottom-bar">
-        <button id="openSettingsBtn" class="btn-secondary">⚙️ Pengaturan</button>
-        <button id="startGameBtn" class="btn-primary">MULAI MAIN ▶</button>
+        <button id="openSettingsBtn" class="btn-3d btn-sec">⚙️ Opsi</button>
+        <button id="startGameBtn" class="btn-3d btn-play">MULAI MAIN ▶</button>
       </div>
     </main>
 
-    <!-- Layar Arena Game -->
+    <!-- Layar Arena Game (Tanpa Tulisan "NYAWA") -->
     <section id="gameScreen" class="screen">
       <div class="game-hud">
-        <button id="pauseGameBtn" class="btn-small" title="Jeda Permainan">⏸</button>
+        <button id="pauseGameBtn" class="btn-hud-3d" title="Jeda">⏸</button>
         <div class="hud-info">
           <span id="hudSongTitle">Judul Lagu</span>
           <span id="hudLevelName" class="hud-badge">Mode Santuy</span>
@@ -175,16 +176,16 @@
         </div>
       </div>
 
-      <!-- Bar Nyawa (Life Bar) & Progress Lagu -->
+      <!-- Bar Energi & Progres Lagu -->
       <div class="bars-container">
         <div class="life-row">
-          <span class="life-label">❤️ NYAWA</span>
+          <span class="heart-icon" id="heartIcon">❤️</span>
           <div class="life-track">
             <div id="lifeBarFill" class="life-fill"></div>
           </div>
           <span id="lifePercentText" class="life-pct">100%</span>
         </div>
-        <div class="progress-track" title="Progres Lagu">
+        <div class="progress-track">
           <div id="songProgressBar" class="progress-fill"></div>
         </div>
       </div>
@@ -192,49 +193,47 @@
       <div class="canvas-wrapper" id="canvasWrapper">
         <canvas id="gameCanvas"></canvas>
 
-        <!-- Hitung Mundur Sebelum Mulai / Lanjut dari Pause -->
         <div id="countdownOverlay" class="countdown-overlay hidden">
           <span id="countdownText">3</span>
         </div>
 
-        <!-- Feedback Teks Melayang -->
         <div id="hitFeedback" class="hit-feedback"></div>
       </div>
     </section>
 
     <!-- Modal Pause -->
     <div id="pauseModal" class="modal hidden">
-      <div class="modal-content pause-box">
-        <div class="lock-icon">⏸️</div>
+      <div class="modal-surface-3d pause-box">
+        <div class="modal-emoji">⏸️</div>
         <h3>Permainan Dijeda</h3>
         <p>Tarik napas sejenak sebelum lanjut mengetuk irama.</p>
-        <button id="resumeGameBtn" class="btn-primary full-width">Lanjutkan ▶</button>
-        <button id="quitToMenuBtn" class="btn-secondary full-width">Keluar ke Menu</button>
+        <button id="resumeGameBtn" class="btn-3d btn-play full-width">Lanjutkan ▶</button>
+        <button id="quitToMenuBtn" class="btn-3d btn-sec full-width">Keluar ke Menu</button>
       </div>
     </div>
 
-    <!-- Modal Hasil Akhir / Game Over -->
+    <!-- Modal Hasil Akhir (Animasi Skor + Grade SSS sampai F) -->
     <div id="resultModal" class="modal hidden">
-      <div class="modal-content result-box">
-        <div id="resultRank" class="result-rank">S</div>
-        <h3 id="resultTitle">Kerja Bagus!</h3>
+      <div class="modal-surface-3d result-box">
+        <div id="resultRank" class="result-rank grade-s">SSS</div>
+        <h3 id="resultTitle">Luar Biasa!</h3>
         <p id="resultSubtitle">Pikiranmu sudah lebih segar sekarang.</p>
 
         <div class="stats-grid">
-          <div class="stat-item">
+          <div class="stat-card-3d">
             <span>Total Skor</span>
-            <strong id="finalScore">0</strong>
+            <strong id="finalScore" class="rolling-number">0</strong>
           </div>
-          <div class="stat-item">
+          <div class="stat-card-3d">
             <span id="finalHighScoreLabel">Highest Score</span>
             <strong id="finalHighScore" class="text-cyan">0</strong>
           </div>
-          <div class="stat-item">
+          <div class="stat-card-3d">
             <span>Max Combo</span>
             <strong id="finalMaxCombo">0x</strong>
           </div>
-          <div class="stat-item">
-            <span>Perfect / Good / Bad / Miss</span>
+          <div class="stat-card-3d">
+            <span>P / G / B / M</span>
             <strong class="stat-breakdown">
               <span id="finalPerfect" class="text-cyan">0</span> /
               <span id="finalGood" class="text-green">0</span> /
@@ -245,22 +244,21 @@
         </div>
 
         <div class="result-actions">
-          <button id="playAgainBtn" class="btn-primary">Main Lagi ↻</button>
-          <button id="resultMenuBtn" class="btn-secondary">Ganti Lagu</button>
+          <button id="playAgainBtn" class="btn-3d btn-play">Main Lagi ↻</button>
+          <button id="resultMenuBtn" class="btn-3d btn-sec">Ganti Lagu</button>
         </div>
       </div>
     </div>
 
-    <!-- Modal Pengaturan (Delay + Sound Effect + Custom SFX Upload) -->
+    <!-- Modal Pengaturan -->
     <div id="settingsModal" class="modal hidden">
-      <div class="modal-content">
-        <h3>⚙️ Pengaturan & Audio</h3>
+      <div class="modal-surface-3d">
+        <h3>⚙️ Pengaturan</h3>
         
-        <!-- Opsi Aktif/Nonaktif Sound Effect -->
-        <div class="setting-row">
+        <div class="setting-row-3d">
           <div>
-            <strong>Sound Effect Ketukan (SFX)</strong>
-            <small>Matikan jika ingin fokus mendengar musik saja</small>
+            <strong>Sound Effect Ketukan</strong>
+            <small>Aktifkan atau matikan efek suara ketukan</small>
           </div>
           <label class="switch">
             <input type="checkbox" id="sfxToggleCheckbox" checked />
@@ -268,27 +266,7 @@
           </label>
         </div>
 
-        <!-- Upload Custom Sound Effect Sendiri -->
-        <div class="custom-sfx-box">
-          <span class="setting-sublabel">Upload Sound Effect Sendiri (Opsional)</span>
-          <div class="sfx-upload-grid">
-            <label for="customPerfectSfxInput" class="btn-sfx-upload">
-              <span>✨ SFX Perfect</span>
-              <small id="customPerfectName">Default</small>
-            </label>
-            <input type="file" id="customPerfectSfxInput" accept=".mp3,.wav,.ogg,.m4a" hidden />
-
-            <label for="customMissSfxInput" class="btn-sfx-upload">
-              <span>💥 SFX Miss</span>
-              <small id="customMissName">Default</small>
-            </label>
-            <input type="file" id="customMissSfxInput" accept=".mp3,.wav,.ogg,.m4a" hidden />
-          </div>
-          <button id="resetSfxBtn" class="btn-text-reset">Reset SFX ke Default</button>
-        </div>
-
-        <!-- Kalibrasi Delay -->
-        <div class="slider-group">
+        <div class="slider-group-3d">
           <span class="setting-sublabel">Kalibrasi Delay Sentuhan (Audio Offset)</span>
           <input type="range" id="offsetSlider" min="-200" max="200" value="0" step="10" />
           <div class="slider-value"><span id="offsetValue">0</span> ms</div>
@@ -297,19 +275,19 @@
         <div class="device-info">
           <small>Device ID: <code id="deviceIdDisplay">-</code></small>
         </div>
-        <button id="closeSettingsBtn" class="btn-primary full-width">Simpan & Tutup</button>
+        <button id="closeSettingsBtn" class="btn-3d btn-play full-width">Simpan & Tutup</button>
       </div>
     </div>
 
     <!-- Modal Paywall Trial Habis -->
     <div id="paywallModal" class="modal hidden">
-      <div class="modal-content paywall-box">
-        <div class="lock-icon">🔒</div>
+      <div class="modal-surface-3d paywall-box">
+        <div class="modal-emoji">🔒</div>
         <h3>Masa Percobaan 3 Hari Selesai</h3>
-        <p>Semoga ZenBeat sudah membantu melepas penatmu! Masukkan kode aktivasi untuk membuka akses permanen selamanya.</p>
+        <p>Masukkan kode aktivasi untuk membuka akses permanen selamanya.</p>
         <input type="text" id="licenseInput" placeholder="Contoh: ZEN-XXXX-XXXX" class="license-input" />
-        <button id="activateBtn" class="btn-primary full-width">Aktifkan Permanen</button>
-        <a href="https://lynk.id" target="_blank" rel="noopener" class="btn-lynk full-width">
+        <button id="activateBtn" class="btn-3d btn-play full-width">Aktifkan Permanen</button>
+        <a href="https://lynk.id" target="_blank" rel="noopener" class="btn-3d btn-sec full-width">
           Beli Kode Aktivasi di Lynk.id
         </a>
         <small class="device-hint">ID Perangkat: <span id="paywallDeviceId">-</span></small>
