@@ -414,29 +414,31 @@ const serverAudioManager = {
   playSfx(type) {
     if (!appState.sfxEnabled) return;
 
-    // 1. Jika ada AudioBuffer (setelah AudioContext aktif), putar instan
+    // 1. Jika buffer Web Audio siap & aktif, putar instan tanpa jeda
     const buffer = this.sfxBuffers[type];
     if (buffer && this.sharedCtx && this.sharedCtx.state === 'running') {
       const source = this.sharedCtx.createBufferSource();
       const gainNode = this.sharedCtx.createGain();
       source.buffer = buffer;
-      gainNode.gain.value = type === 'scoreTick' ? 0.45 : (type === 'buttonClick' ? 0.85 : 0.9);
+      gainNode.gain.value = type === 'scoreTick' ? 0.5 : 1.0;
       source.connect(gainNode);
       gainNode.connect(this.sharedCtx.destination);
       source.start(0);
       return;
     }
 
-    // 2. Putar langsung dari file MP3 via HTML5 Audio (ampuh untuk klik pertama di menu)
+    // 2. Putar langsung dari elemen HTML5 Audio asli (tanpa cloneNode)
     const htmlEl = this.sfxHtmlElements[type];
     if (htmlEl) {
-      const clone = htmlEl.cloneNode();
-      clone.volume = type === 'scoreTick' ? 0.45 : (type === 'buttonClick' ? 0.85 : 0.9);
-      clone.play().catch(() => {});
-      return;
+      htmlEl.pause();
+      htmlEl.currentTime = 0;
+      htmlEl.volume = type === 'scoreTick' ? 0.5 : 1.0;
+      htmlEl.play().catch(() => {
+        // Jika diblokir autoplay, aktifkan AudioContext untuk klik berikutnya
+        this.ensureCtx();
+      });
     }
   }
-};
 
 const previewManager = {
   audioEl: null,
