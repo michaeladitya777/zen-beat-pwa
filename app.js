@@ -12,7 +12,8 @@ const APP_CONFIG = {
       perfect: 'assets/audio/sfx/perfect.mp3',
       slide: 'assets/audio/sfx/slide.mp3',
       miss: 'assets/audio/sfx/miss.mp3',
-      scoreTick: 'assets/audio/sfx/score-tick.mp3'
+      scoreTick: 'assets/audio/sfx/score-tick.mp3',
+      buttonClick: 'assets/audio/sfx/click.mp3' // SFX saat klik tombol menu/UI
     },
     bgm: {
       clear: 'assets/audio/bgm/clear.mp3',
@@ -262,7 +263,7 @@ function updateTrialUI() {
   return true;
 }
 
-// --- 2. SERVER AUDIO MANAGER (WEB AUDIO API BUFFER SFX AGAR LANGSUNG BUNYI & ZERO LATENCY) ---
+// --- 2. SERVER AUDIO MANAGER (SFX KETUKAN & SFX KLIK TOMBOL MENU) ---
 const serverAudioManager = {
   menuAudio: null,
   resultAudio: null,
@@ -405,28 +406,34 @@ const serverAudioManager = {
     if (!appState.sfxEnabled) return;
     const ctx = this.ensureCtx();
 
-    // 1. Prioritaskan AudioBuffer dari file server (assets/audio/sfx/*.mp3)
     const buffer = this.sfxBuffers[type];
     if (buffer) {
       const source = ctx.createBufferSource();
       const gainNode = ctx.createGain();
       source.buffer = buffer;
-      gainNode.gain.value = type === 'scoreTick' ? 0.45 : 0.9;
+      gainNode.gain.value = type === 'scoreTick' ? 0.45 : (type === 'buttonClick' ? 0.75 : 0.9);
       source.connect(gainNode);
       gainNode.connect(ctx.destination);
       source.start(0);
       return;
     }
 
-    // 2. Suara cadangan instan jika file mp3 belum ada di folder sfx
+    // Suara synth cadangan jika file mp3 di server belum tersedia
     const now = ctx.currentTime;
     const osc = ctx.createOscillator();
     const gain = ctx.createGain();
-    osc.type = type === 'miss' ? 'sawtooth' : 'triangle';
-    const freqMap = { perfect: 1046, slide: 1318, tap: 660, miss: 130, scoreTick: 880 };
+    osc.type = type === 'miss' ? 'sawtooth' : (type === 'buttonClick' ? 'sine' : 'triangle');
+    const freqMap = {
+      perfect: 1046,
+      slide: 1318,
+      tap: 660,
+      miss: 130,
+      scoreTick: 880,
+      buttonClick: 580
+    };
     osc.frequency.setValueAtTime(freqMap[type] || 660, now);
-    gain.gain.setValueAtTime(0.07, now);
-    gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.09);
+    gain.gain.setValueAtTime(type === 'buttonClick' ? 0.05 : 0.07, now);
+    gain.gain.exponentialRampToValueAtTime(0.0001, now + (type === 'buttonClick' ? 0.055 : 0.09));
     osc.connect(gain);
     gain.connect(ctx.destination);
     osc.start(now);
@@ -486,7 +493,78 @@ const previewManager = {
   }
 };
 
-// Download Lagu Server dengan Progress Bar Real-Time
+// --- 3. TUTORIAL AWAL PERTAMA KALI BUKA ---
+const TUTORIAL_STEPS = [
+  {
+    visual: '🎵',
+    title: '1. Pilih Lagu Favoritmu',
+    desc: 'Ketuk salah satu lagu bawaan server atau pilih file MP3/WAV dari perangkatmu untuk mulai bermain.'
+  },
+  {
+    visual: '🔥',
+    title: '2. Tentukan Tingkat Tantangan',
+    desc: 'Setelah memilih lagu, pilih level dari Mode Santuy (Easy) hingga Mode WNI (Extreme), lalu tekan Mulai Main.'
+  },
+  {
+    visual: '👆',
+    title: '3. Tap, Hold & Geser Bebas',
+    desc: 'Ketuk saat balok menyentuh garis bawah, tahan balok panjang (HOLD), dan geser ke arah mana saja untuk balok Slide.'
+  },
+  {
+    visual: '❤️',
+    title: '4. Jaga Nyawa & Raih Grade SSS',
+    desc: 'Jangan biarkan bar hati habis! Kumpulkan kombo tinggi untuk meraih peringkat tertinggi hingga SSS.'
+  }
+];
+
+let currentTutorialStep = 0;
+
+function renderTutorialStep() {
+  const step = TUTORIAL_STEPS[currentTutorialStep];
+  document.getElementById('tutorialStepBadge').textContent = `Langkah ${currentTutorialStep + 1} dari ${TUTORIAL_STEPS.length}`;
+  document.getElementById('tutorialVisual').textContent = step.visual;
+  document.getElementById('tutorialTitle').textContent = step.title;
+  document.getElementById('tutorialDesc').textContent = step.desc;
+
+  document.querySelectorAll('.t-dot').forEach((dot, idx) => {
+    dot.classList.toggle('active', idx === currentTutorialStep);
+  });
+
+  const nextBtn = document.getElementById('nextTutorialBtn');
+  nextBtn.textContent = currentTutorialStep === TUTORIAL_STEPS.length - 1 ? 'Selesai ✓' : 'Lanjut ▶';
+}
+
+function openTutorialModal() {
+  currentTutorialStep = 0;
+  renderTutorialStep();
+  document.getElementById('tutorialModal').classList.remove('hidden');
+}
+
+function closeTutorialModal() {
+  document.getElementById('tutorialModal').classList.add('hidden');
+  localStorage.setItem(APP_CONFIG.storageKeyPrefix + 'tutorial_seen', 'true');
+}
+
+// --- 4. PEMILIHAN LAGU, REVEAL LEVEL & HIGH SCORE ---
+function revealLevelSection(songTitle) {
+  const section = document.getElementById('levelActionSection');
+  const caption = document.getElementById('selectedSongCaption');
+  caption.textContent = `Lagu terpilih: ${songTitle}`;
+  section.classList.remove('hidden');
+  section.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+}
+
+function hideLevelSection() {
+  document.getElementById('levelActionSection').classList.add('hidden');
+  document.querySelectorAll('.song-card-3d').forEach((el) => el.classList.remove('selected'));
+  document.querySelectorAll('.history-item').forEach((el) => el.classList.remove('active-history'));
+  appState.selectedSongId = '';
+  appState.selectedSongSrc = '';
+  appState.selectedSongTitle = '';
+  appState.serverSongBlob = null;
+  appState.localAudioBlob = null;
+}
+
 async function downloadServerSongWithProgress(src, onProgress) {
   const response = await fetch(encodeURI(src));
   if (!response.ok) {
@@ -557,6 +635,8 @@ async function selectAndPrepareServerSong(song, cardEl, autoPlayPreview = true) 
   appState.selectedSongSrc = song.src;
   appState.selectedSongTitle = song.title;
 
+  revealLevelSection(song.title);
+
   const pillEl = cardEl.querySelector('.status-pill');
   const progressWrap = cardEl.querySelector('.dl-progress-wrap');
   const fillEl = cardEl.querySelector('.dl-fill');
@@ -622,15 +702,12 @@ async function loadBuiltinSongsFromJson() {
 
     for (let idx = 0; idx < songs.length; idx++) {
       const song = songs[idx];
-      const isSelected = prevSelectedId ? (song.id === prevSelectedId) : (idx === 0);
+      const isSelected = Boolean(prevSelectedId && song.id === prevSelectedId);
       const existingBlob = await getServerSongBlob(song.src);
       const isDownloaded = existingBlob && existingBlob.size > 1024;
       const scores = getBuiltinHighScores(song.id);
 
       if (isSelected) {
-        appState.selectedSongId = song.id;
-        appState.selectedSongSrc = song.src;
-        appState.selectedSongTitle = song.title;
         appState.serverSongBlob = isDownloaded ? existingBlob : null;
       }
 
@@ -661,6 +738,7 @@ async function loadBuiltinSongsFromJson() {
       `;
 
       card.addEventListener('click', () => {
+        serverAudioManager.playSfx('buttonClick');
         selectAndPrepareServerSong(song, card, true);
       });
 
@@ -688,7 +766,6 @@ function checkAudioDuration(blob) {
   });
 }
 
-// --- 3. MANAJEMEN RIWAYAT & HIGHEST SCORE PER LEVEL ---
 function getLocalHistory() {
   try {
     return JSON.parse(localStorage.getItem(APP_CONFIG.storageKeyPrefix + 'local_history_v2')) || [];
@@ -751,6 +828,7 @@ function renderLocalHistory() {
     `;
 
     div.addEventListener('click', async () => {
+      serverAudioManager.playSfx('buttonClick');
       const savedBlob = await getSongBlobFromDB(item.title);
       if (!savedBlob) {
         alert('File audio tidak ditemukan di memori perangkat. Silakan pilih ulang file lagunya.');
@@ -764,6 +842,7 @@ function renderLocalHistory() {
 
       document.getElementById('uploadedFileName').textContent = `✅ ${item.title}`;
       renderLocalHistory();
+      revealLevelSection(item.title);
       previewManager.playPreviewFromSrcOrBlob(savedBlob);
     });
 
@@ -771,7 +850,7 @@ function renderLocalHistory() {
   });
 }
 
-// --- 4. MESIN GAME (SLIDE BEBAS SEMUA ARAH, GRADE BAR, JUDUL DI COUNTDOWN) ---
+// --- 5. MESIN GAME (SLIDE < < <  > > >, DIAGRAM BAR HORIZONTAL) ---
 class RhythmEngine {
   constructor() {
     this.canvas = document.getElementById('gameCanvas');
@@ -853,7 +932,6 @@ class RhythmEngine {
       }
     });
 
-    // Slide mendukung geseran ke SEMUA ARAH (kiri, kanan, atas, bawah, diagonal)
     this.canvas.addEventListener('pointermove', (e) => {
       if (!this.isRunning || this.isPaused) return;
       const touchData = this.activeTouches.get(e.pointerId);
@@ -1183,7 +1261,6 @@ class RhythmEngine {
     return closestNote;
   }
 
-  // Slide bebas ke semua arah
   handleSlideGesture(startLane) {
     const offsetPixels = (appState.audioOffset / 1000) * APP_CONFIG.levels[appState.selectedLevel].speed;
     const targetY = this.hitLineY + offsetPixels;
@@ -1633,7 +1710,7 @@ class RhythmEngine {
         this.draw3DCapsuleNote(ctx, x, note.y, w, h, '#facc15', '#a16207');
 
         ctx.fillStyle = '#070913';
-        ctx.font = '900 14px Outfit, sans-serif';
+        ctx.font = '900 15px Outfit, sans-serif';
         ctx.textAlign = 'center';
         ctx.fillText('< < <  > > >', x + w / 2, note.y + 5.5);
         continue;
@@ -1708,6 +1785,27 @@ class RhythmEngine {
     return { grade: 'D', cls: 'grade-d', title: 'Nyaris Kalah, Coba Lagi!', barPct: 24 };
   }
 
+  animateResultBars(totalNotes) {
+    const safeTotal = Math.max(1, totalNotes);
+    const badTotal = this.badCount + this.lostCount;
+
+    const bars = [
+      { id: 'barPerfect', count: this.perfectCount },
+      { id: 'barGood', count: this.goodCount },
+      { id: 'barBad', count: badTotal },
+      { id: 'barMiss', count: this.missCount }
+    ];
+
+    bars.forEach((b) => {
+      const el = document.getElementById(b.id);
+      el.style.width = '0%';
+      const pct = Math.round((b.count / safeTotal) * 100);
+      requestAnimationFrame(() => {
+        el.style.width = `${pct}%`;
+      });
+    });
+  }
+
   animateScoreCounter(targetScore, highScore, gradeInfo) {
     const scoreEl = document.getElementById('finalScore');
     const highEl = document.getElementById('finalHighScore');
@@ -1767,7 +1865,7 @@ class RhythmEngine {
       const prev = Number(localStorage.getItem(APP_CONFIG.storageKeyPrefix + key) || 0);
       highScore = Math.max(prev, this.score);
       localStorage.setItem(APP_CONFIG.storageKeyPrefix + key, String(highScore));
-      loadBuiltinSongsFromJson(); // Perbarui tampilan High Score pada daftar lagu server
+      loadBuiltinSongsFromJson();
     }
 
     const totalNotes = this.perfectCount + this.goodCount + this.badCount + this.lostCount + this.missCount;
@@ -1792,6 +1890,7 @@ class RhythmEngine {
     document.getElementById('finalMiss').textContent = this.missCount;
 
     document.getElementById('resultModal').classList.remove('hidden');
+    this.animateResultBars(totalNotes);
     this.animateScoreCounter(this.score, highScore, gradeInfo);
   }
 
@@ -1816,7 +1915,7 @@ class RhythmEngine {
   }
 }
 
-// --- 5. INTERAKSI UI MENU UTAMA & FULLSCREEN TOGGLE ---
+// --- 6. INTERAKSI UI MENU UTAMA, TUTORIAL & FULLSCREEN TOGGLE ---
 let rhythmEngine = null;
 
 function applyThemeColor(levelKey) {
@@ -1850,9 +1949,42 @@ function setupUIEvents() {
   window.addEventListener('pointerdown', unlockAudioSystem);
   window.addEventListener('keydown', unlockAudioSystem);
 
+  // Tampilkan Tutorial Otomatis saat pertama kali membuka aplikasi
+  const tutorialSeen = localStorage.getItem(APP_CONFIG.storageKeyPrefix + 'tutorial_seen');
+  if (tutorialSeen !== 'true') {
+    openTutorialModal();
+  }
+
+  document.getElementById('openTutorialBtn').addEventListener('click', () => {
+    serverAudioManager.playSfx('buttonClick');
+    openTutorialModal();
+  });
+
+  document.getElementById('nextTutorialBtn').addEventListener('click', () => {
+    serverAudioManager.playSfx('buttonClick');
+    if (currentTutorialStep < TUTORIAL_STEPS.length - 1) {
+      currentTutorialStep++;
+      renderTutorialStep();
+    } else {
+      closeTutorialModal();
+    }
+  });
+
+  document.getElementById('skipTutorialBtn').addEventListener('click', () => {
+    serverAudioManager.playSfx('buttonClick');
+    closeTutorialModal();
+  });
+
+  document.getElementById('unselectSongBtn').addEventListener('click', () => {
+    serverAudioManager.playSfx('buttonClick');
+    previewManager.stop();
+    hideLevelSection();
+  });
+
   const bgmBtn = document.getElementById('bgmToggleBtn');
   bgmBtn.addEventListener('click', (e) => {
     e.stopPropagation();
+    serverAudioManager.playSfx('buttonClick');
     appState.bgmEnabled = !appState.bgmEnabled;
     if (appState.bgmEnabled) {
       bgmBtn.textContent = '🎵 ON';
@@ -1867,6 +1999,7 @@ function setupUIEvents() {
 
   document.querySelectorAll('.tab-btn').forEach((btn) => {
     btn.addEventListener('click', () => {
+      serverAudioManager.playSfx('buttonClick');
       previewManager.stop();
       document.querySelectorAll('.tab-btn').forEach((b) => b.classList.remove('active'));
       document.querySelectorAll('.tab-content').forEach((c) => c.classList.remove('active'));
@@ -1896,6 +2029,7 @@ function setupUIEvents() {
       return;
     }
 
+    serverAudioManager.playSfx('buttonClick');
     const cleanTitle = file.name.replace(/\.[^/.]+$/, '');
     appState.selectedSource = 'local';
     appState.localAudioBlob = file;
@@ -1904,11 +2038,13 @@ function setupUIEvents() {
     document.getElementById('uploadedFileName').textContent = `✅ ${cleanTitle}`;
     await saveSongBlobToDB(cleanTitle, file);
     saveLocalSongRecord(cleanTitle, appState.selectedLevel, 0);
+    revealLevelSection(cleanTitle);
     previewManager.playPreviewFromSrcOrBlob(file);
   });
 
   document.querySelectorAll('.level-btn-3d').forEach((card) => {
     card.addEventListener('click', () => {
+      serverAudioManager.playSfx('buttonClick');
       document.querySelectorAll('.level-btn-3d').forEach((c) => c.classList.remove('selected'));
       card.classList.add('selected');
       appState.selectedLevel = card.dataset.level;
@@ -1917,11 +2053,17 @@ function setupUIEvents() {
   });
 
   document.getElementById('startGameBtn').addEventListener('click', async () => {
+    serverAudioManager.playSfx('buttonClick');
     if (!updateTrialUI()) return;
     serverAudioManager.ensureCtx();
 
     if (appState.isDownloadingSong) {
       alert('Tunggu sebentar sampai proses unduhan lagu selesai (100%) ya!');
+      return;
+    }
+
+    if (!appState.selectedSongTitle) {
+      alert('Silakan ketuk dan pilih lagu terlebih dahulu ya!');
       return;
     }
 
@@ -1951,26 +2093,31 @@ function setupUIEvents() {
   });
 
   document.getElementById('pauseGameBtn').addEventListener('click', () => {
+    serverAudioManager.playSfx('buttonClick');
     rhythmEngine.pause();
   });
 
   document.getElementById('resumeGameBtn').addEventListener('click', async () => {
+    serverAudioManager.playSfx('buttonClick');
     await rhythmEngine.resume();
   });
 
   document.getElementById('quitToMenuBtn').addEventListener('click', () => {
+    serverAudioManager.playSfx('buttonClick');
     document.getElementById('pauseModal').classList.add('hidden');
     rhythmEngine.stop();
     exitFullScreenToMenu();
   });
 
   document.getElementById('playAgainBtn').addEventListener('click', async () => {
+    serverAudioManager.playSfx('buttonClick');
     serverAudioManager.stopResultMusic();
     document.getElementById('resultModal').classList.add('hidden');
     await rhythmEngine.start();
   });
 
   document.getElementById('resultMenuBtn').addEventListener('click', () => {
+    serverAudioManager.playSfx('buttonClick');
     serverAudioManager.stopResultMusic();
     document.getElementById('resultModal').classList.add('hidden');
     exitFullScreenToMenu();
@@ -1978,13 +2125,14 @@ function setupUIEvents() {
 
   const settingsModal = document.getElementById('settingsModal');
   document.getElementById('openSettingsBtn').addEventListener('click', () => {
+    serverAudioManager.playSfx('buttonClick');
     settingsModal.classList.remove('hidden');
   });
 
   document.getElementById('sfxToggleCheckbox').addEventListener('change', (e) => {
     appState.sfxEnabled = e.target.checked;
     localStorage.setItem(APP_CONFIG.storageKeyPrefix + 'sfxEnabled', String(appState.sfxEnabled));
-    if (appState.sfxEnabled) serverAudioManager.playSfx('tap');
+    if (appState.sfxEnabled) serverAudioManager.playSfx('buttonClick');
   });
 
   document.getElementById('offsetSlider').addEventListener('input', (e) => {
@@ -1993,11 +2141,13 @@ function setupUIEvents() {
   });
 
   document.getElementById('closeSettingsBtn').addEventListener('click', () => {
+    serverAudioManager.playSfx('buttonClick');
     localStorage.setItem(APP_CONFIG.storageKeyPrefix + 'offset', String(appState.audioOffset));
     settingsModal.classList.add('hidden');
   });
 
   document.getElementById('activateBtn').addEventListener('click', () => {
+    serverAudioManager.playSfx('buttonClick');
     const code = document.getElementById('licenseInput').value.trim();
     if (!code) {
       alert('Masukkan kode aktivasi dari Lynk.id terlebih dahulu.');
@@ -2007,20 +2157,40 @@ function setupUIEvents() {
   });
 }
 
-// --- 6. PWA SERVICE WORKER & INSTALL PROMPT ---
+// --- 7. PWA SERVICE WORKER & INSTALL PROMPT (BANNER DEPAN + PENGATURAN) ---
 let deferredPrompt;
 window.addEventListener('beforeinstallprompt', (e) => {
   e.preventDefault();
   deferredPrompt = e;
-  const installBtn = document.getElementById('installBtn');
-  installBtn.classList.remove('hidden');
 
-  installBtn.addEventListener('click', async () => {
-    installBtn.classList.add('hidden');
+  const frontBanner = document.getElementById('frontInstallBanner');
+  const frontBtn = document.getElementById('frontInstallBtn');
+  const settingsWrapper = document.getElementById('installWrapper');
+  const settingsBtn = document.getElementById('installBtn');
+
+  frontBanner.classList.remove('hidden');
+  settingsWrapper.classList.remove('hidden');
+
+  const triggerInstall = async () => {
+    serverAudioManager.playSfx('buttonClick');
+    if (!deferredPrompt) return;
     deferredPrompt.prompt();
-    await deferredPrompt.userChoice;
+    const { outcome } = await deferredPrompt.userChoice;
+    if (outcome === 'accepted') {
+      frontBanner.classList.add('hidden');
+      settingsWrapper.classList.add('hidden');
+    }
     deferredPrompt = null;
-  });
+  };
+
+  frontBtn.onclick = triggerInstall;
+  settingsBtn.onclick = triggerInstall;
+});
+
+window.addEventListener('appinstalled', () => {
+  document.getElementById('frontInstallBanner').classList.add('hidden');
+  document.getElementById('installWrapper').classList.add('hidden');
+  deferredPrompt = null;
 });
 
 if ('serviceWorker' in navigator) {
