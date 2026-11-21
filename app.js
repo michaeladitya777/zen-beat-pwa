@@ -263,11 +263,12 @@ function updateTrialUI() {
   return true;
 }
 
-// --- 2. SERVER AUDIO MANAGER (SFX KETUKAN & SFX KLIK TOMBOL MENU) ---
+// --- 2. SERVER AUDIO MANAGER (HTML5 AUDIO + WEB AUDIO BUFFER AGAR LANGSUNG BUNYI) ---
 const serverAudioManager = {
   menuAudio: null,
   resultAudio: null,
   sfxBuffers: {},
+  sfxHtmlElements: {},
   sharedCtx: null,
   synthTimer: null,
   isPlayingSynth: false,
@@ -284,18 +285,26 @@ const serverAudioManager = {
   },
 
   async init() {
-    const ctx = this.ensureCtx();
     const entries = Object.entries(APP_CONFIG.serverAudio.sfx);
 
+    // 1. Preload langsung via HTML5 Audio (agar langsung bunyi di sentuhan pertama)
+    entries.forEach(([key, src]) => {
+      const audio = new Audio(src);
+      audio.preload = 'auto';
+      this.sfxHtmlElements[key] = audio;
+    });
+
+    // 2. Decode ke Web Audio Buffer untuk permainan ketukan ritme
+    const ctx = this.ensureCtx();
     await Promise.all(entries.map(async ([key, src]) => {
       try {
-        const res = await fetch(`${src}?v=${Date.now()}`);
+        const res = await fetch(src);
         if (!res.ok) return;
         const arrayBuf = await res.arrayBuffer();
         const audioBuf = await ctx.decodeAudioData(arrayBuf);
         this.sfxBuffers[key] = audioBuf;
       } catch (err) {
-        console.warn(`SFX file "${src}" belum terbaca, memakai suara cadangan:`, err.message);
+        console.warn(`Buffer SFX "${src}" menunggu interaksi user:`, err.message);
       }
     }));
   },
@@ -404,40 +413,28 @@ const serverAudioManager = {
 
   playSfx(type) {
     if (!appState.sfxEnabled) return;
-    const ctx = this.ensureCtx();
 
+    // 1. Jika ada AudioBuffer (setelah AudioContext aktif), putar instan
     const buffer = this.sfxBuffers[type];
-    if (buffer) {
-      const source = ctx.createBufferSource();
-      const gainNode = ctx.createGain();
+    if (buffer && this.sharedCtx && this.sharedCtx.state === 'running') {
+      const source = this.sharedCtx.createBufferSource();
+      const gainNode = this.sharedCtx.createGain();
       source.buffer = buffer;
-      gainNode.gain.value = type === 'scoreTick' ? 0.45 : (type === 'buttonClick' ? 0.75 : 0.9);
+      gainNode.gain.value = type === 'scoreTick' ? 0.45 : (type === 'buttonClick' ? 0.85 : 0.9);
       source.connect(gainNode);
-      gainNode.connect(ctx.destination);
+      gainNode.connect(this.sharedCtx.destination);
       source.start(0);
       return;
     }
 
-    // Suara synth cadangan jika file mp3 di server belum tersedia
-    const now = ctx.currentTime;
-    const osc = ctx.createOscillator();
-    const gain = ctx.createGain();
-    osc.type = type === 'miss' ? 'sawtooth' : (type === 'buttonClick' ? 'sine' : 'triangle');
-    const freqMap = {
-      perfect: 1046,
-      slide: 1318,
-      tap: 660,
-      miss: 130,
-      scoreTick: 880,
-      buttonClick: 580
-    };
-    osc.frequency.setValueAtTime(freqMap[type] || 660, now);
-    gain.gain.setValueAtTime(type === 'buttonClick' ? 0.05 : 0.07, now);
-    gain.gain.exponentialRampToValueAtTime(0.0001, now + (type === 'buttonClick' ? 0.055 : 0.09));
-    osc.connect(gain);
-    gain.connect(ctx.destination);
-    osc.start(now);
-    osc.stop(now + 0.1);
+    // 2. Putar langsung dari file MP3 via HTML5 Audio (ampuh untuk klik pertama di menu)
+    const htmlEl = this.sfxHtmlElements[type];
+    if (htmlEl) {
+      const clone = htmlEl.cloneNode();
+      clone.volume = type === 'scoreTick' ? 0.45 : (type === 'buttonClick' ? 0.85 : 0.9);
+      clone.play().catch(() => {});
+      return;
+    }
   }
 };
 
