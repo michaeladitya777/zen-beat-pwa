@@ -1,34 +1,50 @@
 [
   {
+    "id": "Arcade-Rush",
+    "title": "Arcade Rush",
+    "subtitle": "Server Audio • Auto Sync",
+    "src": "assets/audio/songs/Arcade-Rush.mp3",
+    "icon": "🎵",
+    "color": "c-cyan"
+  },
+  {
+    "id": "Full-Combo",
+    "title": "Full Combo",
+    "subtitle": "Server Audio • Auto Sync",
+    "src": "assets/audio/songs/Full-Combo.mp3",
+    "icon": "🌧️",
+    "color": "c-purple"
+  },
+  {
     "id": "Lonceng-Sukacita",
     "title": "Lonceng Sukacita",
     "subtitle": "Server Audio • Auto Sync",
     "src": "assets/audio/songs/Lonceng-Sukacita.mp3",
-    "icon": "🎵",
-    "color": "c-cyan"
+    "icon": "🌃",
+    "color": "c-amber"
   },
   {
     "id": "Tinsel-Rush-1",
     "title": "Tinsel Rush 1",
     "subtitle": "Server Audio • Auto Sync",
     "src": "assets/audio/songs/Tinsel-Rush-1.mp3",
-    "icon": "🌧️",
-    "color": "c-purple"
+    "icon": "☕",
+    "color": "c-cyan"
   },
   {
     "id": "Tinsel-Rush-2",
     "title": "Tinsel Rush 2",
     "subtitle": "Server Audio • Auto Sync",
     "src": "assets/audio/songs/Tinsel-Rush-2.mp3",
-    "icon": "🌃",
-    "color": "c-amber"
+    "icon": "🎧",
+    "color": "c-purple"
   },
   {
     "id": "theme-menu",
     "title": "Theme Menu",
     "subtitle": "Server Audio • Auto Sync",
     "src": "assets/audio/songs/theme-menu.mp3",
-    "icon": "☕",
-    "color": "c-cyan"
+    "icon": "🔥",
+    "color": "c-amber"
   }
 ]
