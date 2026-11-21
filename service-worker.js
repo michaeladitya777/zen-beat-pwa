@@ -1,49 +1,69 @@
-const CACHE_NAME = 'zenbeat-cache-v10';
-const ASSETS_TO_CACHE = [
+const CACHE_NAME = 'zenbeat-core-v11';
+
+// Hanya file inti aplikasi yang di-cache di awal
+const CORE_ASSETS = [
   './',
   './index.html',
   './style.css',
   './app.js',
-  './manifest.json',
-  './assets/audio/theme-menu.mp3',
-  './assets/audio/songs/Lonceng-Sukacita.mp3',
-  './assets/audio/songs/Tinsel-Rush-1.mp3',
-  './assets/audio/songs/Tinsel-Rush-2.mp3',
-  './assets/audio/sfx/tap.mp3',
-  './assets/audio/sfx/perfect.mp3',
-  './assets/audio/sfx/slide.mp3',
-  './assets/audio/sfx/miss.mp3',
-  './assets/audio/sfx/score-tick.mp3',
-  './assets/audio/bgm/clear.mp3',
-  './assets/audio/bgm/gameover.mp3'
+  './manifest.json'
 ];
 
 self.addEventListener('install', (event) => {
-  event.waitUntil(
-    caches.open(CACHE_NAME).then((cache) => {
-      // Gunakan Promise.allSettled agar instalasi SW tidak gagal jika sebagian MP3 belum diunggah
-      return Promise.allSettled(
-        ASSETS_TO_CACHE.map((url) => cache.add(url))
-      );
-    })
-  );
   self.skipWaiting();
+  event.waitUntil(
+    caches.open(CACHE_NAME).then((cache) => cache.addAll(CORE_ASSETS))
+  );
 });
 
 self.addEventListener('activate', (event) => {
   event.waitUntil(
     caches.keys().then((keys) =>
       Promise.all(
-        keys.filter((key) => key !== CACHE_NAME).map((key) => caches.delete(key))
+        keys.map((key) => {
+          if (key !== CACHE_NAME) {
+            return caches.delete(key);
+          }
+        })
       )
-    )
+    ).then(() => self.clients.claim())
   );
-  self.clients.claim();
 });
 
 self.addEventListener('fetch', (event) => {
-  if (event.request.method !== 'GET') return;
+  const url = new URL(event.request.url);
+
+  // 1. Untuk songs.json: Selalu ambil dari internet dulu agar lagu baru langsung muncul
+  if (url.pathname.endsWith('songs.json')) {
+    event.respondWith(
+      fetch(event.request)
+        .then((res) => {
+          const clone = res.clone();
+          caches.open(CACHE_NAME).then((cache) => cache.put(event.request, clone));
+          return res;
+        })
+        .catch(() => caches.match(event.request))
+    );
+    return;
+  }
+
+  // 2. Untuk file audio (.mp3/.wav) & aset lainnya: Cache otomatis saat pertama kali diputar
   event.respondWith(
-    caches.match(event.request).then((cached) => cached || fetch(event.request))
+    caches.match(event.request).then((cachedResponse) => {
+      if (cachedResponse) {
+        return cachedResponse;
+      }
+      return fetch(event.request).then((networkResponse) => {
+        if (
+          networkResponse &&
+          networkResponse.status === 200 &&
+          event.request.method === 'GET'
+        ) {
+          const clone = networkResponse.clone();
+          caches.open(CACHE_NAME).then((cache) => cache.put(event.request, clone));
+        }
+        return networkResponse;
+      });
+    })
   );
 });
