@@ -1,16 +1,30 @@
-const CACHE_NAME = 'zenbeat-cache-v7';
+const CACHE_NAME = 'zenbeat-cache-v8';
 const ASSETS_TO_CACHE = [
   './',
   './index.html',
   './style.css',
   './app.js',
-  './manifest.json'
+  './manifest.json',
+  './assets/audio/theme-menu.mp3',
+  './assets/audio/songs/hujan-sore.mp3',
+  './assets/audio/songs/pulang-tenggo.mp3',
+  './assets/audio/songs/kopi-sachet.mp3',
+  './assets/audio/sfx/tap.mp3',
+  './assets/audio/sfx/perfect.mp3',
+  './assets/audio/sfx/slide.mp3',
+  './assets/audio/sfx/miss.mp3',
+  './assets/audio/sfx/score-tick.mp3',
+  './assets/audio/bgm/clear.mp3',
+  './assets/audio/bgm/gameover.mp3'
 ];
 
 self.addEventListener('install', (event) => {
   event.waitUntil(
     caches.open(CACHE_NAME).then((cache) => {
-      return cache.addAll(ASSETS_TO_CACHE);
+      // Gunakan Promise.allSettled agar instalasi SW tidak gagal jika sebagian MP3 belum diunggah
+      return Promise.allSettled(
+        ASSETS_TO_CACHE.map((url) => cache.add(url))
+      );
     })
   );
   self.skipWaiting();
@@ -18,24 +32,18 @@ self.addEventListener('install', (event) => {
 
 self.addEventListener('activate', (event) => {
   event.waitUntil(
-    caches.keys().then((keys) => {
-      return Promise.all(
+    caches.keys().then((keys) =>
+      Promise.all(
         keys.filter((key) => key !== CACHE_NAME).map((key) => caches.delete(key))
-      );
-    })
+      )
+    )
   );
   self.clients.claim();
 });
 
 self.addEventListener('fetch', (event) => {
-  // Jangan cache request API Cloudflare nantinya
-  if (event.request.url.includes('workers.dev')) {
-    return;
-  }
-
+  if (event.request.method !== 'GET') return;
   event.respondWith(
-    caches.match(event.request).then((cachedResponse) => {
-      return cachedResponse || fetch(event.request);
-    })
+    caches.match(event.request).then((cached) => cached || fetch(event.request))
   );
 });
