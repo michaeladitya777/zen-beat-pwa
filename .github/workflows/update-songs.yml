@@ -1,0 +1,39 @@
+name: Auto Update Songs List
+on:
+  push:
+    paths:
+      - 'assets/audio/songs/*.mp3'
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - name: Generate songs.json
+        run: |
+          node -e '
+          const fs = require("fs");
+          const files = fs.readdirSync("assets/audio/songs").filter(f => f.endsWith(".mp3"));
+          const icons = ["🎵", "🌧️", "🌃", "☕", "🎧", "🔥"];
+          const colors = ["c-cyan", "c-purple", "c-amber"];
+          const list = files.map((f, i) => {
+            const name = f.replace(/\.mp3$/i, "").replace(/[-_]/g, " ").replace(/\b\w/g, c => c.toUpperCase());
+            return {
+              id: f.replace(/\.mp3$/i, ""),
+              title: name,
+              subtitle: "Server Audio • Auto Sync",
+              src: "assets/audio/songs/" + f,
+              icon: icons[i % icons.length],
+              color: colors[i % colors.length]
+            };
+          });
+          fs.writeFileSync("assets/audio/songs/songs.json", JSON.stringify(list, null, 2));
+          '
+      - name: Commit songs.json
+        run: |
+          git config user.name "github-actions"
+          git config user.email "actions@github.com"
+          git add assets/audio/songs/songs.json
+          git commit -m "Auto update daftar lagu" || exit 0
+          git push
