@@ -28,8 +28,8 @@ const APP_CONFIG = {
       speed: 280,
       cooldown: 640,
       doubleChance: 0,
-      holdChance: 0.14,
-      slideChance: 0.1,
+      holdChance: 0.16,
+      slideChance: 0, // Slide hanya di Hard & Extreme
       beatThreshold: 172,
       missDamage: 7
     },
@@ -41,8 +41,8 @@ const APP_CONFIG = {
       speed: 390,
       cooldown: 430,
       doubleChance: 0.05,
-      holdChance: 0.18,
-      slideChance: 0.15,
+      holdChance: 0.20,
+      slideChance: 0, // Slide hanya di Hard & Extreme
       beatThreshold: 158,
       missDamage: 9
     },
@@ -68,7 +68,7 @@ const APP_CONFIG = {
       cooldown: 165,
       doubleChance: 0.28,
       holdChance: 0.22,
-      slideChance: 0.22,
+      slideChance: 0.24,
       beatThreshold: 130,
       missDamage: 12
     }
@@ -81,20 +81,22 @@ const appState = {
   firstLaunch: null,
   isActivated: false,
   selectedSource: 'builtin',
-  selectedSongId: 'hujan-sore',
-  selectedSongSrc: 'assets/audio/songs/hujan-sore.mp3',
-  selectedSongTitle: 'Hujan Sore di Kantor',
+  selectedSongId: '',
+  selectedSongSrc: '',
+  selectedSongTitle: '',
+  serverSongBlob: null,
   localAudioBlob: null,
   selectedLevel: 'easy',
   audioOffset: 0,
   sfxEnabled: true,
-  bgmEnabled: true
+  bgmEnabled: true,
+  isDownloadingSong: false
 };
 
-// --- 1. INDEXEDDB (LISENSI & LAGU LOKAL) ---
+// --- 1. INDEXEDDB (LISENSI, LAGU LOKAL & CACHE UNDUHAN LAGU SERVER) ---
 function openAppDB() {
   return new Promise((resolve, reject) => {
-    const request = indexedDB.open('ZenBeatAppDB', 4);
+    const request = indexedDB.open('ZenBeatAppDB', 5);
     request.onupgradeneeded = (e) => {
       const db = e.target.result;
       if (!db.objectStoreNames.contains('meta')) {
@@ -102,6 +104,9 @@ function openAppDB() {
       }
       if (!db.objectStoreNames.contains('songs')) {
         db.createObjectStore('songs', { keyPath: 'title' });
+      }
+      if (!db.objectStoreNames.contains('server_songs')) {
+        db.createObjectStore('server_songs', { keyPath: 'src' });
       }
     };
     request.onsuccess = () => resolve(request.result);
@@ -158,6 +163,30 @@ async function getSongBlobFromDB(title) {
     return new Promise((resolve) => {
       const tx = db.transaction('songs', 'readonly');
       const req = tx.objectStore('songs').get(title);
+      req.onsuccess = () => resolve(req.result ? req.result.blob : null);
+      req.onerror = () => resolve(null);
+    });
+  } catch {
+    return null;
+  }
+}
+
+async function saveServerSongBlob(src, blob) {
+  try {
+    const db = await openAppDB();
+    const tx = db.transaction('server_songs', 'readwrite');
+    tx.objectStore('server_songs').put({ src, blob, savedAt: Date.now() });
+  } catch (err) {
+    console.warn('Gagal cache lagu server:', err);
+  }
+}
+
+async function getServerSongBlob(src) {
+  try {
+    const db = await openAppDB();
+    return new Promise((resolve) => {
+      const tx = db.transaction('server_songs', 'readonly');
+      const req = tx.objectStore('server_songs').get(src);
       req.onsuccess = () => resolve(req.result ? req.result.blob : null);
       req.onerror = () => resolve(null);
     });
@@ -233,11 +262,14 @@ function updateTrialUI() {
   return true;
 }
 
-// --- 2. SERVER AUDIO MANAGER & AUTO LOADER SONGS.JSON ---
+// --- 2. SERVER AUDIO MANAGER, DOWNLOAD PROGRESS & AUTO LOADER ---
 const serverAudioManager = {
   menuAudio: null,
   resultAudio: null,
   sfxPool: {},
+  synthTimer: null,
+  synthCtx: null,
+  isPlayingSynth: false,
 
   init() {
     Object.entries(APP_CONFIG.serverAudio.sfx).forEach(([key, src]) => {
@@ -245,6 +277,67 @@ const serverAudioManager = {
       audio.preload = 'auto';
       this.sfxPool[key] = audio;
     });
+  },
+
+  startFallbackSynthMenu() {
+    if (this.isPlayingSynth || !appState.bgmEnabled) return;
+    if (document.getElementById('gameScreen').classList.contains('active')) return;
+
+    const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+    if (!this.synthCtx) {
+      this.synthCtx = new AudioContextClass();
+    }
+    if (this.synthCtx.state === 'suspended') {
+      this.synthCtx.resume().catch(() => {});
+    }
+
+    this.isPlayingSynth = true;
+    const chords = [
+      [174.61, 220.00, 261.63, 329.63],
+      [164.81, 196.00, 246.94, 293.66],
+      [146.83, 174.61, 220.00, 261.63],
+      [130.81, 164.81, 196.00, 246.94]
+    ];
+    let step = 0;
+
+    const playChord = () => {
+      if (!this.isPlayingSynth || !appState.bgmEnabled) return;
+      if (document.getElementById('gameScreen').classList.contains('active')) {
+        this.stopFallbackSynthMenu();
+        return;
+      }
+
+      const now = this.synthCtx.currentTime;
+      const notes = chords[step % chords.length];
+      step++;
+
+      notes.forEach((freq, idx) => {
+        const osc = this.synthCtx.createOscillator();
+        const gain = this.synthCtx.createGain();
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(freq, now + idx * 0.06);
+
+        gain.gain.setValueAtTime(0.0001, now + idx * 0.06);
+        gain.gain.linearRampToValueAtTime(0.028, now + idx * 0.06 + 0.25);
+        gain.gain.exponentialRampToValueAtTime(0.0001, now + 2.3);
+
+        osc.connect(gain);
+        gain.connect(this.synthCtx.destination);
+        osc.start(now + idx * 0.06);
+        osc.stop(now + 2.4);
+      });
+    };
+
+    playChord();
+    this.synthTimer = setInterval(playChord, 2500);
+  },
+
+  stopFallbackSynthMenu() {
+    this.isPlayingSynth = false;
+    if (this.synthTimer) {
+      clearInterval(this.synthTimer);
+      this.synthTimer = null;
+    }
   },
 
   startMenuTheme() {
@@ -256,11 +349,19 @@ const serverAudioManager = {
       this.menuAudio = new Audio(APP_CONFIG.serverAudio.menuTheme);
       this.menuAudio.loop = true;
       this.menuAudio.volume = 0.55;
+      this.menuAudio.addEventListener('error', () => {
+        this.menuAudio = null;
+        this.startFallbackSynthMenu();
+      }, { once: true });
     }
-    this.menuAudio.play().catch(() => {});
+
+    this.menuAudio.play()
+      .then(() => this.stopFallbackSynthMenu())
+      .catch(() => this.startFallbackSynthMenu());
   },
 
   stopMenuTheme() {
+    this.stopFallbackSynthMenu();
     if (this.menuAudio) {
       this.menuAudio.pause();
       this.menuAudio.currentTime = 0;
@@ -297,17 +398,20 @@ const serverAudioManager = {
       return;
     }
 
-    if (!audioCtxFallback) return;
-    const now = audioCtxFallback.currentTime;
-    const osc = audioCtxFallback.createOscillator();
-    const gain = audioCtxFallback.createGain();
+    const ctx = audioCtxFallback || this.synthCtx;
+    if (!ctx) return;
+    if (ctx.state === 'suspended') ctx.resume().catch(() => {});
+
+    const now = ctx.currentTime;
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
     osc.type = type === 'miss' ? 'sawtooth' : 'triangle';
     const freqMap = { perfect: 1046, slide: 1318, tap: 660, miss: 130, scoreTick: 880 };
     osc.frequency.setValueAtTime(freqMap[type] || 660, now);
     gain.gain.setValueAtTime(0.05, now);
     gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.09);
     osc.connect(gain);
-    gain.connect(audioCtxFallback.destination);
+    gain.connect(ctx.destination);
     osc.start(now);
     osc.stop(now + 0.1);
   }
@@ -342,7 +446,7 @@ const previewManager = {
       this.url = URL.createObjectURL(source);
       this.audioEl = new Audio(this.url);
     } else {
-      this.audioEl = new Audio(source);
+      this.audioEl = new Audio(encodeURI(source));
     }
 
     this.audioEl.volume = 0.65;
@@ -365,6 +469,103 @@ const previewManager = {
   }
 };
 
+// Download Lagu Server dengan Progress Bar Real-Time
+async function downloadServerSongWithProgress(src, onProgress) {
+  const response = await fetch(encodeURI(src));
+  if (!response.ok) {
+    throw new Error(`HTTP ${response.status}`);
+  }
+
+  const contentLength = response.headers.get('content-length');
+  const total = contentLength ? parseInt(contentLength, 10) : 0;
+  let loaded = 0;
+
+  const reader = response.body.getReader();
+  const chunks = [];
+
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    chunks.push(value);
+    loaded += value.byteLength;
+
+    if (total > 0) {
+      const pct = Math.min(99, Math.round((loaded / total) * 100));
+      onProgress(pct);
+    } else {
+      onProgress(50);
+    }
+  }
+
+  const blob = new Blob(chunks, { type: 'audio/mpeg' });
+  onProgress(100);
+  await saveServerSongBlob(src, blob);
+  return blob;
+}
+
+async function selectAndPrepareServerSong(song, cardEl, autoPlayPreview = true) {
+  if (appState.isDownloadingSong) return;
+
+  document.querySelectorAll('.song-card-3d').forEach((el) => {
+    el.classList.remove('selected');
+  });
+  cardEl.classList.add('selected');
+
+  appState.selectedSource = 'builtin';
+  appState.selectedSongId = song.id;
+  appState.selectedSongSrc = song.src;
+  appState.selectedSongTitle = song.title;
+
+  const pillEl = cardEl.querySelector('.status-pill');
+  const progressWrap = cardEl.querySelector('.dl-progress-wrap');
+  const fillEl = cardEl.querySelector('.dl-fill');
+  const pctEl = cardEl.querySelector('.dl-pct');
+
+  // Cek apakah sudah pernah terunduh di perangkat
+  let cachedBlob = await getServerSongBlob(song.src);
+  if (cachedBlob && cachedBlob.size > 1024) {
+    appState.serverSongBlob = cachedBlob;
+    pillEl.textContent = '✓ SIAP';
+    pillEl.classList.add('ready');
+    progressWrap.classList.add('hidden');
+    if (autoPlayPreview) {
+      previewManager.playPreviewFromSrcOrBlob(cachedBlob);
+    }
+    return;
+  }
+
+  // Jika belum ada, tampilkan progress download secara real-time
+  appState.isDownloadingSong = true;
+  appState.serverSongBlob = null;
+  pillEl.textContent = 'MENGUNDUH...';
+  progressWrap.classList.remove('hidden');
+  fillEl.style.width = '5%';
+  pctEl.textContent = '5%';
+
+  try {
+    const downloadedBlob = await downloadServerSongWithProgress(song.src, (pct) => {
+      fillEl.style.width = `${pct}%`;
+      pctEl.textContent = `${pct}%`;
+    });
+
+    appState.serverSongBlob = downloadedBlob;
+    pillEl.textContent = '✓ SIAP';
+    pillEl.classList.add('ready');
+    setTimeout(() => progressWrap.classList.add('hidden'), 400);
+
+    if (autoPlayPreview) {
+      previewManager.playPreviewFromSrcOrBlob(downloadedBlob);
+    }
+  } catch (err) {
+    console.error('Gagal mengunduh lagu server:', err);
+    pillEl.textContent = '⬇ UNDUH ULANG';
+    progressWrap.classList.add('hidden');
+    alert(`Gagal mengunduh "${song.title}". Periksa koneksi internet atau file di server.`);
+  } finally {
+    appState.isDownloadingSong = false;
+  }
+}
+
 async function loadBuiltinSongsFromJson() {
   const container = document.getElementById('builtinSongList');
   try {
@@ -378,12 +579,17 @@ async function loadBuiltinSongsFromJson() {
     }
 
     container.innerHTML = '';
-    songs.forEach((song, idx) => {
+    for (let idx = 0; idx < songs.length; idx++) {
+      const song = songs[idx];
       const isFirst = idx === 0;
+      const existingBlob = await getServerSongBlob(song.src);
+      const isDownloaded = existingBlob && existingBlob.size > 1024;
+
       if (isFirst) {
         appState.selectedSongId = song.id;
         appState.selectedSongSrc = song.src;
         appState.selectedSongTitle = song.title;
+        appState.serverSongBlob = isDownloaded ? existingBlob : null;
       }
 
       const card = document.createElement('div');
@@ -391,34 +597,30 @@ async function loadBuiltinSongsFromJson() {
       card.dataset.song = song.id;
       card.dataset.src = song.src;
       card.innerHTML = `
-        <div class="song-left">
-          <div class="album-3d ${song.color || 'c-cyan'}">${song.icon || '🎵'}</div>
-          <div class="song-info">
-            <strong>${song.title}</strong>
-            <span>${song.subtitle || 'Server Audio'}</span>
+        <div class="song-card-top">
+          <div class="song-left">
+            <div class="album-3d ${song.color || 'c-cyan'}">${song.icon || '🎵'}</div>
+            <div class="song-info">
+              <strong>${song.title}</strong>
+              <span>${song.subtitle || 'Server Audio'}</span>
+            </div>
           </div>
+          <span class="status-pill ${isDownloaded ? 'ready' : ''}">
+            ${isDownloaded ? '✓ SIAP' : '⬇ UNDUH'}
+          </span>
         </div>
-        <span class="status-pill">${isFirst ? 'AKTIF' : 'PILIH'}</span>
+        <div class="dl-progress-wrap hidden">
+          <div class="dl-track"><div class="dl-fill"></div></div>
+          <span class="dl-pct">0%</span>
+        </div>
       `;
 
       card.addEventListener('click', () => {
-        document.querySelectorAll('.song-card-3d').forEach((el) => {
-          el.classList.remove('selected');
-          el.querySelector('.status-pill').textContent = 'PILIH';
-        });
-        card.classList.add('selected');
-        card.querySelector('.status-pill').textContent = 'AKTIF';
-
-        appState.selectedSource = 'builtin';
-        appState.selectedSongId = song.id;
-        appState.selectedSongSrc = song.src;
-        appState.selectedSongTitle = song.title;
-
-        previewManager.playPreviewFromSrcOrBlob(song.src);
+        selectAndPrepareServerSong(song, card, true);
       });
 
       container.appendChild(card);
-    });
+    }
   } catch (err) {
     console.warn('Gagal memuat songs.json:', err);
     container.innerHTML = '<div class="loading-songs">Pastikan file assets/audio/songs/songs.json sudah tersedia.</div>';
@@ -537,7 +739,7 @@ function renderLocalHistory() {
   });
 }
 
-// --- 4. MESIN GAME (FULL SCREEN, TUTS LEBIH NAIK, BEAT SYNC & GRADE SSS-F) ---
+// --- 4. MESIN GAME (NOTE LEBIH TINGGI, 3D PILL LEBAR, HOLD COMBO & LOST, GRADE SSS-F) ---
 class RhythmEngine {
   constructor() {
     this.canvas = document.getElementById('gameCanvas');
@@ -551,6 +753,7 @@ class RhythmEngine {
     this.dataArray = null;
     this.audioEl = null;
     this.localObjectUrl = null;
+    this.lastLoadError = '';
 
     this.notes = [];
     this.particles = [];
@@ -579,6 +782,7 @@ class RhythmEngine {
     this.perfectCount = 0;
     this.goodCount = 0;
     this.badCount = 0;
+    this.lostCount = 0;
     this.missCount = 0;
 
     this.bindInputs();
@@ -592,8 +796,8 @@ class RhythmEngine {
     this.ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     this.width = rect.width;
     this.height = rect.height;
-    // Posisi garis target & tuts dinaikkan agar jempol tidak mepet ke bawah layar
-    this.hitLineY = this.height - 135;
+    // Posisi garis target & tuts dinaikkan lebih tinggi agar jempol sangat nyaman
+    this.hitLineY = this.height - 175;
   }
 
   bindInputs() {
@@ -718,6 +922,7 @@ class RhythmEngine {
     this.perfectCount = 0;
     this.goodCount = 0;
     this.badCount = 0;
+    this.lostCount = 0;
     this.missCount = 0;
     this.lastSpawnTime = 0;
     this.lastBassEnergy = 0;
@@ -734,13 +939,14 @@ class RhythmEngine {
       await this.audioCtx.resume();
     }
 
+    // Gunakan Blob hasil unduhan jika sudah siap di memori perangkat
     const audioSource = appState.selectedSource === 'local'
       ? appState.localAudioBlob
-      : appState.selectedSongSrc;
+      : (appState.serverSongBlob || appState.selectedSongSrc);
 
     const loaded = await this.setupAudioStream(audioSource);
     if (!loaded) {
-      alert(`File lagu "${appState.selectedSongSrc}" belum ditemukan di server.\nPastikan file .mp3 sudah tersedia di folder assets/audio/songs/.`);
+      alert(`Gagal memuat lagu "${appState.selectedSongTitle}".\nPenyebab: ${this.lastLoadError || 'File belum terunduh'}`);
       exitFullScreenToMenu();
       return;
     }
@@ -751,14 +957,13 @@ class RhythmEngine {
     this.loop(this.lastFrameTime);
   }
 
- async setupAudioStream(source) {
+  async setupAudioStream(source) {
     try {
       if (source instanceof Blob) {
         this.localObjectUrl = URL.createObjectURL(source);
         this.audioEl = new Audio(this.localObjectUrl);
       } else {
-        const safeUrl = encodeURI(source);
-        this.audioEl = new Audio(safeUrl);
+        this.audioEl = new Audio(encodeURI(source));
       }
       this.audioEl.preload = 'auto';
 
@@ -770,7 +975,7 @@ class RhythmEngine {
         }, { once: true });
         this.audioEl.addEventListener('error', () => {
           clearTimeout(timeout);
-          reject(new Error('File audio tidak ditemukan (404) atau format rusak'));
+          reject(new Error('File audio tidak ditemukan atau format rusak'));
         }, { once: true });
         this.audioEl.load();
       });
@@ -790,6 +995,7 @@ class RhythmEngine {
       return true;
     } catch (err) {
       console.error('Detail error audio:', err.message, source);
+      this.lastLoadError = err.message;
       return false;
     }
   }
@@ -847,25 +1053,26 @@ class RhythmEngine {
       const roll = Math.random();
 
       if (roll < levelCfg.holdChance) {
-        const holdLength = 120 + Math.random() * 95;
+        const holdLength = 135 + Math.random() * 100;
         this.notes.push({
           type: 'hold',
           lane: lane1,
-          y: -30,
+          y: -35,
           length: holdLength,
           holding: false,
           hit: false,
           tickAccum: 0
         });
         this.lastSpawnTime = now + (holdLength / levelCfg.speed) * 650;
-      } else if (roll < levelCfg.holdChance + levelCfg.slideChance) {
+      } else if (levelCfg.slideChance > 0 && roll < levelCfg.holdChance + levelCfg.slideChance) {
+        // Slide hanya muncul jika levelCfg.slideChance > 0 (Hard & Extreme)
         const startLane = Math.floor(Math.random() * 3);
         const dir = Math.random() < 0.5 ? -1 : 1;
         this.notes.push({
           type: 'slide',
           lane: startLane,
           span: 2,
-          y: -30,
+          y: -35,
           slideDir: dir,
           hit: false
         });
@@ -874,7 +1081,7 @@ class RhythmEngine {
         this.notes.push({
           type: 'tap',
           lane: lane1,
-          y: -30,
+          y: -35,
           hit: false
         });
 
@@ -883,7 +1090,7 @@ class RhythmEngine {
           this.notes.push({
             type: 'tap',
             lane: lane2,
-            y: -30,
+            y: -35,
             hit: false
           });
         }
@@ -948,7 +1155,7 @@ class RhythmEngine {
         const laneMatch = startLane === -1 || startLane === note.lane || startLane === note.lane + 1 || note.touched;
         const diff = Math.abs(note.y - targetY);
 
-        if (laneMatch && diff <= 120 && note.slideDir === dir) {
+        if (laneMatch && diff <= 125 && note.slideDir === dir) {
           note.hit = true;
           this.missStreak = 0;
           this.laneFlashes[note.lane] = 1.0;
@@ -978,25 +1185,38 @@ class RhythmEngine {
     }
   }
 
+  // Jika Hold dilepas terlalu cepat (hanya di-tap): Combo hilang, tidak dihitung Miss, tapi tercatat LOST
   handleLaneRelease(lane) {
     for (const note of this.notes) {
       if (note.type === 'hold' && note.lane === lane && note.holding && !note.hit) {
         const tailY = note.y - note.length;
         note.holding = false;
         note.hit = true;
-        if (tailY >= this.hitLineY - 65) {
-          this.score += 80;
+
+        if (tailY >= this.hitLineY - 55) {
+          // Berhasil ditahan hampir sampai ujung
+          this.score += 100;
+          this.combo++;
+          this.perfectCount++;
+          if (this.combo > this.maxCombo) this.maxCombo = this.combo;
           this.showFeedback('HOLD CLEAR!', 'anim-good');
           serverAudioManager.playSfx('perfect', this.audioCtx);
           this.spawnHitEffects(lane);
           this.updateScoreHUD();
+        } else {
+          // Hanya di-tap / dilepas terlalu cepat -> LOST (Hilangkan Combo, bukan Miss, menghalangi SSS)
+          this.combo = 0;
+          this.perfectStreak = 0;
+          this.lostCount++;
+          this.showFeedback('LOST', 'anim-lost');
+          serverAudioManager.playSfx('tap', this.audioCtx);
         }
       }
     }
   }
 
   evaluateTimingHit(minDiff, lane, customPerfectText = null) {
-    if (minDiff <= 42) {
+    if (minDiff <= 44) {
       this.score += 100 + this.combo * 5;
       this.combo++;
       this.perfectStreak++;
@@ -1016,7 +1236,7 @@ class RhythmEngine {
 
       this.shakeIntensity = isMilestone ? 6.5 : 1.5;
       if (navigator.vibrate) navigator.vibrate(isMilestone ? 30 : 14);
-    } else if (minDiff <= 76) {
+    } else if (minDiff <= 78) {
       this.score += 50 + this.combo * 2;
       this.combo++;
       this.perfectStreak = 0;
@@ -1061,7 +1281,7 @@ class RhythmEngine {
     this.shockwaves.push({
       x: cx,
       y: this.hitLineY,
-      radius: 18,
+      radius: 20,
       alpha: 0.9,
       color: levelColor
     });
@@ -1134,7 +1354,11 @@ class RhythmEngine {
         note.tickAccum += dt;
         if (note.tickAccum >= 0.08) {
           note.tickAccum = 0;
-          this.score += 15;
+          // Combo dan Skor terus berjalan selama ditahan
+          this.combo++;
+          if (this.combo > this.maxCombo) this.maxCombo = this.combo;
+          this.comboPulse = 1.25;
+          this.score += 20 + Math.floor(this.combo * 1.5);
           this.updateScoreHUD();
           this.spawnHitEffects(note.lane);
         }
@@ -1142,7 +1366,9 @@ class RhythmEngine {
         if (note.y - note.length >= this.hitLineY) {
           note.holding = false;
           note.hit = true;
-          this.score += 100;
+          this.score += 120;
+          this.combo++;
+          if (this.combo > this.maxCombo) this.maxCombo = this.combo;
           this.life = Math.min(100, this.life + 3);
           this.showFeedback('HOLD PERFECT!', 'anim-perfect');
           serverAudioManager.playSfx('perfect', this.audioCtx);
@@ -1150,8 +1376,7 @@ class RhythmEngine {
           this.updateLifeUI();
         }
       } else {
-        // Batas miss mengikuti posisi garis target yang dinaikkan
-        if (note.y > this.hitLineY + 115) {
+        if (note.y > this.hitLineY + 120) {
           note.hit = true;
           this.combo = 0;
           this.perfectStreak = 0;
@@ -1207,6 +1432,33 @@ class RhythmEngine {
     this.animFrameId = requestAnimationFrame((t) => this.loop(t));
   }
 
+  // Helper Gambar Balok 3D Kapsul Lebar (Tidak Kotak Datar)
+  draw3DCapsuleNote(ctx, x, yCenter, w, h, mainColor, shadowColor) {
+    const top = yCenter - h / 2;
+    const radius = h / 2; // Bentuk kapsul/pill 3D bulat di ujung
+
+    // 1. Bayangan Bawah Tebal 3D (Extrusion Depth)
+    ctx.fillStyle = shadowColor;
+    ctx.beginPath();
+    ctx.roundRect(x, top + 6, w, h, radius);
+    ctx.fill();
+
+    // 2. Badan Utama 3D
+    ctx.fillStyle = mainColor;
+    ctx.shadowColor = mainColor;
+    ctx.shadowBlur = 14;
+    ctx.beginPath();
+    ctx.roundRect(x, top, w, h, radius);
+    ctx.fill();
+    ctx.shadowBlur = 0;
+
+    // 3. Kilau Cahaya Atas (3D Glossy Rim)
+    ctx.fillStyle = 'rgba(255, 255, 255, 0.48)';
+    ctx.beginPath();
+    ctx.roundRect(x + 10, top + 5, w - 20, 8, 4);
+    ctx.fill();
+  }
+
   draw() {
     const ctx = this.ctx;
     const laneW = this.width / 4;
@@ -1235,7 +1487,7 @@ class RhythmEngine {
     // 2. Angka Combo / Miss Streak
     if (this.combo > 1) {
       ctx.save();
-      ctx.translate(this.width / 2, this.height * 0.31);
+      ctx.translate(this.width / 2, this.height * 0.28);
       ctx.scale(this.comboPulse, this.comboPulse);
 
       ctx.font = '900 84px Outfit, sans-serif';
@@ -1253,7 +1505,7 @@ class RhythmEngine {
       ctx.restore();
     } else if (this.missStreak > 1) {
       ctx.save();
-      ctx.translate(this.width / 2, this.height * 0.31);
+      ctx.translate(this.width / 2, this.height * 0.28);
       ctx.scale(this.comboPulse, this.comboPulse);
 
       ctx.font = '900 72px Outfit, sans-serif';
@@ -1292,13 +1544,13 @@ class RhythmEngine {
       }
     }
 
-    // 4. Tuts Bawah Menyatu (Jarak Tipis 2px, Posisi Lebih Naik)
+    // 4. Tuts Bawah Menyatu (Lebih Lebar & Tinggi)
     const keyLabels = ['D', 'F', 'J', 'K'];
     for (let i = 0; i < 4; i++) {
       const padW = laneW - 2;
-      const padH = 60;
+      const padH = 68;
       const cx = i * laneW + laneW / 2;
-      const cy = this.hitLineY + 18;
+      const cy = this.hitLineY + 22;
 
       ctx.save();
       ctx.translate(cx, cy);
@@ -1306,21 +1558,21 @@ class RhythmEngine {
 
       ctx.fillStyle = this.laneFlashes[i] > 0.15
         ? `rgba(${levelRgb}, 0.42)`
-        : 'rgba(255, 255, 255, 0.06)';
+        : 'rgba(255, 255, 255, 0.07)';
 
       ctx.beginPath();
-      ctx.roundRect(-padW / 2, -padH / 2, padW, padH, 12);
+      ctx.roundRect(-padW / 2, -padH / 2, padW, padH, 16);
       ctx.fill();
 
-      ctx.fillStyle = 'rgba(255, 255, 255, 0.22)';
-      ctx.font = 'bold 12px Outfit, sans-serif';
+      ctx.fillStyle = 'rgba(255, 255, 255, 0.25)';
+      ctx.font = 'bold 13px Outfit, sans-serif';
       ctx.textAlign = 'center';
-      ctx.fillText(keyLabels[i], 0, 4);
+      ctx.fillText(keyLabels[i], 0, 5);
       ctx.restore();
     }
 
     // 5. Garis Target Semi-Transparan Berkedip Sesuai Deteksi Beat Bass Real-Time
-    const pulseAlpha = 0.2 + this.beatPulse * 0.72;
+    const pulseAlpha = 0.22 + this.beatPulse * 0.72;
     const pulseWidth = 2 + this.beatPulse * 3.5;
     ctx.save();
     ctx.strokeStyle = `rgba(${levelRgb}, ${pulseAlpha})`;
@@ -1335,85 +1587,61 @@ class RhythmEngine {
     ctx.stroke();
     ctx.restore();
 
-    // 6. Gambar Balok Nada (Tap, Hold Panjang, dan Slide 2 Tuts)
+    // 6. Gambar Balok Nada 3D Kapsul Lebar (Tap, Hold, dan Slide 2 Tuts)
     for (const note of this.notes) {
       if (note.type === 'slide') {
-        const x = note.lane * laneW + 4;
-        const w = laneW * 2 - 8;
-        const h = 34;
-        const slideColor = '#facc15';
+        const x = note.lane * laneW + 2;
+        const w = laneW * 2 - 4;
+        const h = 46;
 
-        const trailGrad = ctx.createLinearGradient(0, note.y - 65, 0, note.y);
+        const trailGrad = ctx.createLinearGradient(0, note.y - 70, 0, note.y);
         trailGrad.addColorStop(0, 'rgba(250, 204, 21, 0)');
         trailGrad.addColorStop(1, 'rgba(250, 204, 21, 0.22)');
         ctx.fillStyle = trailGrad;
-        ctx.fillRect(x + 4, note.y - 65, w - 8, 65);
+        ctx.fillRect(x + 6, note.y - 70, w - 12, 70);
 
-        ctx.fillStyle = slideColor;
-        ctx.shadowColor = slideColor;
-        ctx.shadowBlur = 18;
-        ctx.beginPath();
-        ctx.roundRect(x, note.y - h / 2, w, h, 12);
-        ctx.fill();
-        ctx.shadowBlur = 0;
+        this.draw3DCapsuleNote(ctx, x, note.y, w, h, '#facc15', '#a16207');
 
         ctx.fillStyle = '#070913';
         ctx.font = '900 15px Outfit, sans-serif';
         ctx.textAlign = 'center';
         const arrowLabel = note.slideDir === 1 ? 'GESER  ▶ ▶ ▶' : '◀ ◀ ◀  GESER';
-        ctx.fillText(arrowLabel, x + w / 2, note.y + 5);
+        ctx.fillText(arrowLabel, x + w / 2, note.y + 6);
         continue;
       }
 
-      const x = note.lane * laneW + 5;
-      const w = laneW - 10;
-      const h = 30;
+      const x = note.lane * laneW + 2;
+      const w = laneW - 4;
+      const h = 44;
 
       if (note.type === 'hold') {
         const headY = note.holding ? this.hitLineY : note.y;
         const tailY = note.y - note.length;
         const bodyH = Math.max(0, headY - tailY);
 
-        ctx.fillStyle = `rgba(${levelRgb}, 0.35)`;
+        // Badan ekor Hold lebar 3D
+        ctx.fillStyle = `rgba(${levelRgb}, 0.34)`;
         ctx.beginPath();
-        ctx.roundRect(x + 6, tailY, w - 12, bodyH, 10);
+        ctx.roundRect(x + 6, tailY, w - 12, bodyH, 16);
         ctx.fill();
 
-        ctx.fillStyle = 'rgba(255, 255, 255, 0.35)';
-        ctx.fillRect(x + w / 2 - 2, tailY + 6, 4, Math.max(0, bodyH - 12));
+        ctx.fillStyle = 'rgba(255, 255, 255, 0.42)';
+        ctx.fillRect(x + w / 2 - 2.5, tailY + 8, 5, Math.max(0, bodyH - 16));
 
-        ctx.fillStyle = levelColor;
-        ctx.shadowColor = levelColor;
-        ctx.shadowBlur = 14;
-        ctx.beginPath();
-        ctx.roundRect(x, headY - h / 2, w, h, 10);
-        ctx.fill();
-        ctx.shadowBlur = 0;
+        this.draw3DCapsuleNote(ctx, x, headY, w, h, levelColor, 'rgba(0, 0, 0, 0.55)');
 
         ctx.fillStyle = '#070913';
-        ctx.font = '900 10px Outfit, sans-serif';
+        ctx.font = '900 11px Outfit, sans-serif';
         ctx.textAlign = 'center';
-        ctx.fillText('HOLD', x + w / 2, headY + 3.5);
+        ctx.fillText('HOLD', x + w / 2, headY + 4.5);
       } else {
         const trailGrad = ctx.createLinearGradient(0, note.y - 75, 0, note.y);
         trailGrad.addColorStop(0, `rgba(${levelRgb}, 0)`);
         trailGrad.addColorStop(1, `rgba(${levelRgb}, 0.28)`);
         ctx.fillStyle = trailGrad;
-        ctx.fillRect(x + 4, note.y - 75, w - 8, 75);
+        ctx.fillRect(x + 6, note.y - 75, w - 12, 75);
 
-        ctx.fillStyle = levelColor;
-        ctx.shadowColor = levelColor;
-        ctx.shadowBlur = 14;
-
-        ctx.beginPath();
-        ctx.roundRect(x, note.y - h / 2, w, h, 10);
-        ctx.fill();
-        ctx.shadowBlur = 0;
-
-        ctx.fillStyle = 'rgba(255, 255, 255, 0.65)';
-        ctx.beginPath();
-        ctx.roundRect(x + 8, note.y - 3, w - 16, 6, 3);
-        ctx.fill();
+        this.draw3DCapsuleNote(ctx, x, note.y, w, h, levelColor, 'rgba(0, 0, 0, 0.55)');
       }
     }
 
@@ -1439,10 +1667,11 @@ class RhythmEngine {
 
   calculateGrade(accuracy, isGameOver) {
     if (isGameOver || accuracy < 45) return { grade: 'F', cls: 'grade-f', title: 'Gagal Fokus!' };
-    if (accuracy >= 99 && this.missCount === 0 && this.badCount === 0) {
+    // Jika ada Hold yang cuma di-tap (lostCount > 0), tidak bisa mendapat grade SSS atau SS
+    if (accuracy >= 99 && this.missCount === 0 && this.badCount === 0 && this.lostCount === 0) {
       return { grade: 'SSS', cls: 'grade-sss', title: 'DEWA RITME! SEMPURNA!' };
     }
-    if (accuracy >= 96 && this.missCount === 0) {
+    if (accuracy >= 96 && this.missCount === 0 && this.lostCount === 0) {
       return { grade: 'SS', cls: 'grade-ss', title: 'NYARIS SEMPURNA!' };
     }
     if (accuracy >= 90) return { grade: 'S', cls: 'grade-s', title: 'Luar Biasa! Stres Hilang!' };
@@ -1507,9 +1736,9 @@ class RhythmEngine {
       localStorage.setItem(APP_CONFIG.storageKeyPrefix + key, String(highScore));
     }
 
-    const totalNotes = this.perfectCount + this.goodCount + this.badCount + this.missCount;
+    const totalNotes = this.perfectCount + this.goodCount + this.badCount + this.lostCount + this.missCount;
     const accuracy = totalNotes > 0
-      ? ((this.perfectCount + this.goodCount * 0.7 + this.badCount * 0.3) / totalNotes) * 100
+      ? ((this.perfectCount + this.goodCount * 0.7 + this.badCount * 0.3 + this.lostCount * 0.2) / totalNotes) * 100
       : 100;
 
     const gradeInfo = this.calculateGrade(accuracy, isGameOver);
@@ -1519,13 +1748,13 @@ class RhythmEngine {
       : gradeInfo.title;
     document.getElementById('resultSubtitle').textContent = isGameOver
       ? 'Cobaan terlalu deras, tarik napas dulu lalu coba lagi!'
-      : `Akurasi Ketukan: ${accuracy.toFixed(1)}%`;
+      : `Akurasi Ketukan: ${accuracy.toFixed(1)}%${this.lostCount > 0 ? ` (${this.lostCount} Hold Lost)` : ''}`;
 
     document.getElementById('finalHighScoreLabel').textContent = `HIGH (${levelCfg.short})`;
     document.getElementById('finalMaxCombo').textContent = `${this.maxCombo}x`;
     document.getElementById('finalPerfect').textContent = this.perfectCount;
     document.getElementById('finalGood').textContent = this.goodCount;
-    document.getElementById('finalBad').textContent = this.badCount;
+    document.getElementById('finalBad').textContent = this.badCount + this.lostCount;
     document.getElementById('finalMiss').textContent = this.missCount;
 
     document.getElementById('resultModal').classList.remove('hidden');
@@ -1655,9 +1884,31 @@ function setupUIEvents() {
   document.getElementById('startGameBtn').addEventListener('click', async () => {
     if (!updateTrialUI()) return;
 
+    if (appState.isDownloadingSong) {
+      alert('Tunggu sebentar sampai proses unduhan lagu selesai (100%) ya!');
+      return;
+    }
+
     if (appState.selectedSource === 'local' && !appState.localAudioBlob) {
       alert('Pilih file lagu MP3/WAV dari perangkatmu atau dari daftar riwayat terlebih dahulu ya!');
       return;
+    }
+
+    // Jika lagu server dipilih namun belum terunduh sama sekali, otomatis unduh dulu sebelum masuk
+    if (appState.selectedSource === 'builtin' && !appState.serverSongBlob) {
+      const selectedCard = document.querySelector('.song-card-3d.selected');
+      if (selectedCard) {
+        await selectAndPrepareServerSong(
+          {
+            id: appState.selectedSongId,
+            src: appState.selectedSongSrc,
+            title: appState.selectedSongTitle
+          },
+          selectedCard,
+          false
+        );
+      }
+      if (!appState.serverSongBlob) return;
     }
 
     const levelInfo = APP_CONFIG.levels[appState.selectedLevel];
