@@ -1635,7 +1635,7 @@ class RhythmEngine {
         ctx.fillStyle = '#070913';
         ctx.font = '900 14px Outfit, sans-serif';
         ctx.textAlign = 'center';
-        ctx.fillText('✦ GESER BEBAS ✦', x + w / 2, note.y + 5.5);
+        ctx.fillText('< < <  > > >', x + w / 2, note.y + 5.5);
         continue;
       }
 
