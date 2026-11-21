@@ -6,31 +6,35 @@ const APP_CONFIG = {
     easy: {
       name: 'Mode Santuy',
       color: '#38bdf8',
-      speed: 270, // piksel per detik
-      cooldown: 650,
+      rgb: '56, 189, 248',
+      speed: 280,
+      cooldown: 640,
       doubleChance: 0,
       beatThreshold: 175
     },
     normal: {
       name: 'Mode Biasa Aja',
       color: '#34d399',
-      speed: 380,
-      cooldown: 430,
+      rgb: '52, 211, 153',
+      speed: 390,
+      cooldown: 420,
       doubleChance: 0.06,
       beatThreshold: 160
     },
     hard: {
       name: 'Mode Sistem Kebut Semalam (SKS)',
       color: '#fb923c',
-      speed: 510,
-      cooldown: 240,
+      rgb: '251, 146, 60',
+      speed: 520,
+      cooldown: 235,
       doubleChance: 0.16,
       beatThreshold: 145
     },
     extreme: {
       name: 'Mode WNI',
       color: '#f43f5e',
-      speed: 650,
+      rgb: '244, 63, 94',
+      speed: 660,
       cooldown: 145,
       doubleChance: 0.35,
       beatThreshold: 132
@@ -162,7 +166,7 @@ function updateTrialUI() {
   return true;
 }
 
-// --- 2. MESIN GAME & AUTO-BEAT AUDIO ENGINE (TAHAP 2) ---
+// --- 2. MESIN GAME & JUICY VISUAL ENGINE ---
 class RhythmEngine {
   constructor() {
     this.canvas = document.getElementById('gameCanvas');
@@ -178,15 +182,22 @@ class RhythmEngine {
     this.localObjectUrl = null;
     this.synthInterval = null;
 
-    // Gameplay State
+    // Visual & Juice Effects
     this.notes = [];
     this.particles = [];
+    this.shockwaves = [];
     this.laneFlashes = [0, 0, 0, 0];
+    this.padPressScale = [1, 1, 1, 1];
+    this.comboPulse = 1;
+    this.shakeIntensity = 0;
+    this.visualizerBars = new Array(16).fill(0);
+
+    // Timing
     this.lastSpawnTime = 0;
     this.lastFrameTime = 0;
     this.lastEnergy = 0;
     this.songStartTime = 0;
-    this.songDuration = 45; // default 45 detik untuk lagu bawaan
+    this.songDuration = 45;
 
     // Skor
     this.score = 0;
@@ -207,11 +218,10 @@ class RhythmEngine {
     this.ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     this.width = rect.width;
     this.height = rect.height;
-    this.hitLineY = this.height - 78;
+    this.hitLineY = this.height - 92;
   }
 
   bindInputs() {
-    // Sentuhan Layar HP (Multi-touch support untuk Mode WNI)
     this.canvas.addEventListener('pointerdown', (e) => {
       if (!this.isRunning) return;
       e.preventDefault();
@@ -223,7 +233,6 @@ class RhythmEngine {
       }
     });
 
-    // Keyboard Laptop (D, F, J, K)
     window.addEventListener('keydown', (e) => {
       if (!this.isRunning || e.repeat) return;
       const keyMap = { KeyD: 0, KeyF: 1, KeyJ: 2, KeyK: 3 };
@@ -233,14 +242,42 @@ class RhythmEngine {
     });
   }
 
+  runCountdown() {
+    return new Promise((resolve) => {
+      const overlay = document.getElementById('countdownOverlay');
+      const textEl = document.getElementById('countdownText');
+      const steps = ['3', '2', '1', 'GAS!'];
+      let idx = 0;
+
+      overlay.classList.remove('hidden');
+      textEl.textContent = steps[idx];
+
+      const timer = setInterval(() => {
+        idx++;
+        if (idx < steps.length) {
+          textEl.textContent = steps[idx];
+          textEl.style.animation = 'none';
+          void textEl.offsetWidth;
+          textEl.style.animation = 'popScale 0.55s ease-out';
+        } else {
+          clearInterval(timer);
+          overlay.classList.add('hidden');
+          resolve();
+        }
+      }, 550);
+    });
+  }
+
   async start() {
     this.stop();
     this.resizeCanvas();
 
-    // Reset Skor & State
+    // Reset State
     this.notes = [];
     this.particles = [];
+    this.shockwaves = [];
     this.laneFlashes = [0, 0, 0, 0];
+    this.padPressScale = [1, 1, 1, 1];
     this.score = 0;
     this.combo = 0;
     this.maxCombo = 0;
@@ -250,6 +287,10 @@ class RhythmEngine {
     this.lastSpawnTime = 0;
     this.lastEnergy = 0;
     this.updateScoreHUD();
+
+    // Gambar arena awal sebelum countdown selesai
+    this.draw();
+    await this.runCountdown();
 
     this.audioCtx = new (window.AudioContext || window.webkitAudioContext)();
     if (this.audioCtx.state === 'suspended') {
@@ -275,7 +316,7 @@ class RhythmEngine {
 
     const source = this.audioCtx.createMediaElementSource(this.audioEl);
     this.analyser = this.audioCtx.createAnalyser();
-    this.analyser.fftSize = 256;
+    this.analyser.fftSize = 128;
     this.dataArray = new Uint8Array(this.analyser.frequencyBinCount);
 
     source.connect(this.analyser);
@@ -286,28 +327,27 @@ class RhythmEngine {
     this.songDuration = this.audioEl.duration || 120;
   }
 
-  // Synthesizer Instrumental Bawaan (100% Offline, 0 KB, Bebas Hak Cipta)
   setupBuiltinSynth(songId, bpm) {
-    this.songDuration = 45; // 45 detik per sesi relaksasi
+    this.songDuration = 45;
     const beatMs = (60 / bpm) * 1000;
     const chordsMap = {
       'lofi-chill': [
-        [261.63, 329.63, 392.00, 493.88], // Cmaj7
-        [220.00, 261.63, 329.63, 392.00], // Am7
-        [174.61, 220.00, 261.63, 349.23], // Fmaj7
-        [196.00, 246.94, 293.66, 392.00]  // G6
+        [261.63, 329.63, 392.00, 493.88],
+        [220.00, 261.63, 329.63, 392.00],
+        [174.61, 220.00, 261.63, 349.23],
+        [196.00, 246.94, 293.66, 392.00]
       ],
       'night-drive': [
-        [146.83, 220.00, 293.66, 349.23], // Dm
-        [116.54, 174.61, 233.08, 293.66], // Bb
-        [130.81, 196.00, 261.63, 329.63], // C
-        [110.00, 164.81, 220.00, 261.63]  // Am
+        [146.83, 220.00, 293.66, 349.23],
+        [116.54, 174.61, 233.08, 293.66],
+        [130.81, 196.00, 261.63, 329.63],
+        [110.00, 164.81, 220.00, 261.63]
       ],
       'coffee-rush': [
-        [164.81, 246.94, 329.63, 392.00], // Em
-        [130.81, 196.00, 261.63, 329.63], // C
-        [196.00, 246.94, 293.66, 392.00], // G
-        [146.83, 220.00, 293.66, 369.99]  // D
+        [164.81, 246.94, 329.63, 392.00],
+        [130.81, 196.00, 261.63, 329.63],
+        [196.00, 246.94, 293.66, 392.00],
+        [146.83, 220.00, 293.66, 369.99]
       ]
     };
 
@@ -319,7 +359,11 @@ class RhythmEngine {
       const now = this.audioCtx.currentTime;
       const chord = chords[Math.floor(step / 4) % chords.length];
 
-      // Mainkan pad chord tiap 4 ketukan
+      // Gerakkan bar visualizer latar belakang
+      for (let i = 0; i < this.visualizerBars.length; i++) {
+        this.visualizerBars[i] = 25 + Math.random() * 85;
+      }
+
       if (step % 4 === 0) {
         chord.forEach((freq) => {
           const osc = this.audioCtx.createOscillator();
@@ -338,7 +382,6 @@ class RhythmEngine {
         });
       }
 
-      // Mainkan bass kick tiap ketukan
       const kickOsc = this.audioCtx.createOscillator();
       const kickGain = this.audioCtx.createGain();
       kickOsc.type = 'sine';
@@ -353,7 +396,6 @@ class RhythmEngine {
       kickOsc.start(now);
       kickOsc.stop(now + 0.17);
 
-      // Melodi petikan lembut
       const noteFreq = chord[step % chord.length] * 2;
       const melOsc = this.audioCtx.createOscillator();
       const melGain = this.audioCtx.createGain();
@@ -366,7 +408,6 @@ class RhythmEngine {
       melOsc.start(now);
       melOsc.stop(now + 0.26);
 
-      // Picu kemunculan balok sesuai ketukan lagu bawaan
       this.trySpawnBeatNote(performance.now(), true);
       step++;
     };
@@ -381,10 +422,10 @@ class RhythmEngine {
     const osc = this.audioCtx.createOscillator();
     const gain = this.audioCtx.createGain();
     osc.type = 'sine';
-    osc.frequency.setValueAtTime(isPerfect ? 880 : 620, now);
-    osc.frequency.exponentialRampToValueAtTime(300, now + 0.045);
+    osc.frequency.setValueAtTime(isPerfect ? 920 : 640, now);
+    osc.frequency.exponentialRampToValueAtTime(320, now + 0.045);
 
-    gain.gain.setValueAtTime(0.07, now);
+    gain.gain.setValueAtTime(0.065, now);
     gain.gain.exponentialRampToValueAtTime(0.001, now + 0.05);
 
     osc.connect(gain);
@@ -399,15 +440,18 @@ class RhythmEngine {
 
     let isBeat = forceBeat;
 
-    // Jika lagu MP3 lokal, analisis dentuman bass secara real-time
     if (!forceBeat && this.analyser) {
       this.analyser.getByteFrequencyData(this.dataArray);
-      // Rata-rata frekuensi rendah (Bass: index 1 - 12)
       let bassSum = 0;
-      for (let i = 1; i <= 12; i++) {
+      for (let i = 1; i <= 10; i++) {
         bassSum += this.dataArray[i];
       }
-      const bassAvg = bassSum / 12;
+      const bassAvg = bassSum / 10;
+
+      // Update visualizer bars dari frekuensi asli lagu MP3
+      for (let i = 0; i < this.visualizerBars.length; i++) {
+        this.visualizerBars[i] = (this.dataArray[i * 2] || 0) * 0.65;
+      }
 
       if (bassAvg > levelCfg.beatThreshold && bassAvg > this.lastEnergy + 8) {
         isBeat = true;
@@ -420,7 +464,6 @@ class RhythmEngine {
       const lane1 = Math.floor(Math.random() * 4);
       this.notes.push({ lane: lane1, y: -30, hit: false });
 
-      // Peluang Double Tap (Terutama di Mode SKS & Mode WNI)
       if (Math.random() < levelCfg.doubleChance) {
         let lane2 = (lane1 + 1 + Math.floor(Math.random() * 3)) % 4;
         this.notes.push({ lane: lane2, y: -30, hit: false });
@@ -430,10 +473,11 @@ class RhythmEngine {
 
   handleLaneHit(lane) {
     this.laneFlashes[lane] = 1.0;
+    this.padPressScale[lane] = 0.86; // Efek tombol tuts membal ke dalam
+
     const offsetPixels = (appState.audioOffset / 1000) * APP_CONFIG.levels[appState.selectedLevel].speed;
     const targetY = this.hitLineY + offsetPixels;
 
-    // Cari balok terdekat di jalur yang ditekan
     let closestNote = null;
     let minDiff = Infinity;
 
@@ -447,23 +491,29 @@ class RhythmEngine {
       }
     }
 
-    if (closestNote && minDiff <= 85) {
+    if (closestNote && minDiff <= 90) {
       closestNote.hit = true;
-      if (minDiff <= 38) {
+      const levelColor = APP_CONFIG.levels[appState.selectedLevel].color;
+
+      if (minDiff <= 42) {
         this.score += 100 + this.combo * 5;
         this.combo++;
         this.perfectCount++;
-        this.showFeedback('PERFECT!', '#38bdf8');
+        this.showFeedback('PERFECT!', levelColor);
         this.playTapClick(true);
+        this.shakeIntensity = appState.selectedLevel === 'extreme' ? 4.5 : 2;
+        if (navigator.vibrate) navigator.vibrate(15); // Haptic getar ringan di HP
       } else {
         this.score += 50 + this.combo * 2;
         this.combo++;
         this.goodCount++;
-        this.showFeedback('GOOD', '#34d399');
+        this.showFeedback('GOOD', '#cbd5e1');
         this.playTapClick(false);
       }
+
       if (this.combo > this.maxCombo) this.maxCombo = this.combo;
-      this.spawnParticles(lane);
+      this.comboPulse = 1.32;
+      this.spawnHitEffects(lane);
       this.updateScoreHUD();
     }
   }
@@ -479,20 +529,31 @@ class RhythmEngine {
     clearTimeout(this.feedbackTimer);
     this.feedbackTimer = setTimeout(() => {
       el.classList.remove('show');
-    }, 280);
+    }, 260);
   }
 
-  spawnParticles(lane) {
+  spawnHitEffects(lane) {
     const laneW = this.width / 4;
     const cx = lane * laneW + laneW / 2;
     const levelColor = APP_CONFIG.levels[appState.selectedLevel].color;
 
-    for (let i = 0; i < 8; i++) {
+    // Cincin gelombang cahaya (Shockwave)
+    this.shockwaves.push({
+      x: cx,
+      y: this.hitLineY,
+      radius: 18,
+      alpha: 0.9,
+      color: levelColor
+    });
+
+    // Percikan partikel
+    for (let i = 0; i < 10; i++) {
       this.particles.push({
         x: cx,
         y: this.hitLineY,
-        vx: (Math.random() - 0.5) * 220,
-        vy: (Math.random() - 0.8) * 220,
+        vx: (Math.random() - 0.5) * 260,
+        vy: (Math.random() - 0.85) * 260,
+        size: 3 + Math.random() * 3,
         alpha: 1,
         color: levelColor
       });
@@ -501,7 +562,6 @@ class RhythmEngine {
 
   updateScoreHUD() {
     document.getElementById('scoreDisplay').textContent = this.score;
-    document.getElementById('comboDisplay').textContent = this.combo;
   }
 
   loop(timestamp) {
@@ -525,7 +585,6 @@ class RhythmEngine {
       return;
     }
 
-    // Deteksi Ketukan Lagu Lokal
     if (appState.selectedSource === 'local') {
       this.trySpawnBeatNote(timestamp, false);
     }
@@ -535,7 +594,7 @@ class RhythmEngine {
     for (const note of this.notes) {
       if (!note.hit) {
         note.y += speed * dt;
-        if (note.y > this.height + 20) {
+        if (note.y > this.height + 24) {
           note.hit = true;
           this.combo = 0;
           this.missCount++;
@@ -546,17 +605,29 @@ class RhythmEngine {
     }
     this.notes = this.notes.filter((n) => !n.hit);
 
-    // Update Partikel & Kilauan Jalur
+    // Decay animasi visual
     for (let i = 0; i < 4; i++) {
-      if (this.laneFlashes[i] > 0) {
-        this.laneFlashes[i] = Math.max(0, this.laneFlashes[i] - dt * 4.5);
-      }
+      this.laneFlashes[i] = Math.max(0, this.laneFlashes[i] - dt * 4.5);
+      this.padPressScale[i] += (1 - this.padPressScale[i]) * Math.min(1, dt * 18);
     }
+
+    for (let i = 0; i < this.visualizerBars.length; i++) {
+      this.visualizerBars[i] = Math.max(0, this.visualizerBars[i] - dt * 140);
+    }
+
+    this.comboPulse += (1 - this.comboPulse) * Math.min(1, dt * 12);
+    this.shakeIntensity = Math.max(0, this.shakeIntensity - dt * 25);
+
+    for (const sw of this.shockwaves) {
+      sw.radius += dt * 190;
+      sw.alpha -= dt * 2.8;
+    }
+    this.shockwaves = this.shockwaves.filter((s) => s.alpha > 0);
 
     for (const p of this.particles) {
       p.x += p.vx * dt;
       p.y += p.vy * dt;
-      p.alpha -= dt * 2.5;
+      p.alpha -= dt * 2.6;
     }
     this.particles = this.particles.filter((p) => p.alpha > 0);
 
@@ -567,24 +638,57 @@ class RhythmEngine {
   draw() {
     const ctx = this.ctx;
     const laneW = this.width / 4;
-    const levelColor = APP_CONFIG.levels[appState.selectedLevel].color;
+    const levelCfg = APP_CONFIG.levels[appState.selectedLevel];
+    const levelColor = levelCfg.color;
+    const levelRgb = levelCfg.rgb;
+
+    ctx.save();
+    // Efek getar layar halus (Screen Shake)
+    if (this.shakeIntensity > 0.1) {
+      const dx = (Math.random() - 0.5) * this.shakeIntensity;
+      const dy = (Math.random() - 0.5) * this.shakeIntensity;
+      ctx.translate(dx, dy);
+    }
 
     ctx.clearRect(0, 0, this.width, this.height);
 
-    // 1. Gambar 4 Jalur & Efek Kilauan Ketukan
+    // 1. Audio Visualizer Latar Belakang
+    const barCount = this.visualizerBars.length;
+    const barW = this.width / barCount;
+    for (let i = 0; i < barCount; i++) {
+      const barH = this.visualizerBars[i] * 1.4;
+      ctx.fillStyle = `rgba(${levelRgb}, 0.07)`;
+      ctx.fillRect(i * barW + 2, this.hitLineY - barH, barW - 4, barH);
+    }
+
+    // 2. Angka Combo Besar di Tengah Latar Belakang
+    if (this.combo > 1) {
+      ctx.save();
+      ctx.translate(this.width / 2, this.height * 0.34);
+      ctx.scale(this.comboPulse, this.comboPulse);
+      ctx.fillStyle = `rgba(${levelRgb}, 0.18)`;
+      ctx.font = '900 76px sans-serif';
+      ctx.textAlign = 'center';
+      ctx.fillText(`${this.combo}`, 0, 0);
+
+      ctx.font = '800 14px sans-serif';
+      ctx.fillText('COMBO', 0, 22);
+      ctx.restore();
+    }
+
+    // 3. Jalur & Kilauan Sorotan Ketukan
     for (let i = 0; i < 4; i++) {
       const x = i * laneW;
       if (this.laneFlashes[i] > 0) {
-        const grad = ctx.createLinearGradient(0, this.hitLineY - 140, 0, this.height);
-        grad.addColorStop(0, 'rgba(56, 189, 248, 0)');
-        grad.addColorStop(1, `rgba(56, 189, 248, ${this.laneFlashes[i] * 0.28})`);
+        const grad = ctx.createLinearGradient(0, this.hitLineY - 220, 0, this.height);
+        grad.addColorStop(0, `rgba(${levelRgb}, 0)`);
+        grad.addColorStop(1, `rgba(${levelRgb}, ${this.laneFlashes[i] * 0.34})`);
         ctx.fillStyle = grad;
         ctx.fillRect(x, 0, laneW, this.height);
       }
 
-      // Garis pembatas jalur
       if (i > 0) {
-        ctx.strokeStyle = 'rgba(255, 255, 255, 0.06)';
+        ctx.strokeStyle = 'rgba(255, 255, 255, 0.05)';
         ctx.lineWidth = 1;
         ctx.beginPath();
         ctx.moveTo(x, 0);
@@ -593,58 +697,96 @@ class RhythmEngine {
       }
     }
 
-    // 2. Garis Target Ketukan (Hit Zone)
-    ctx.fillStyle = 'rgba(255, 255, 255, 0.04)';
-    ctx.fillRect(0, this.hitLineY - 22, this.width, 44);
-
-    ctx.strokeStyle = levelColor;
-    ctx.lineWidth = 2.5;
+    // 4. Garis Target & Tuts Tombol Bawah (Tactile Pads)
+    ctx.strokeStyle = `rgba(${levelRgb}, 0.45)`;
+    ctx.lineWidth = 2;
     ctx.beginPath();
     ctx.moveTo(0, this.hitLineY);
     ctx.lineTo(this.width, this.hitLineY);
     ctx.stroke();
 
-    // Tombol Lingkaran Target di Tiap Jalur
     const keyLabels = ['D', 'F', 'J', 'K'];
     for (let i = 0; i < 4; i++) {
+      const padW = laneW - 14;
+      const padH = 54;
       const cx = i * laneW + laneW / 2;
-      ctx.beginPath();
-      ctx.arc(cx, this.hitLineY, 22, 0, Math.PI * 2);
-      ctx.strokeStyle = this.laneFlashes[i] > 0.2 ? '#ffffff' : 'rgba(255,255,255,0.25)';
+      const cy = this.hitLineY + 12;
+
+      ctx.save();
+      ctx.translate(cx, cy);
+      ctx.scale(this.padPressScale[i], this.padPressScale[i]);
+
+      // Kotak tuts instrumen
+      ctx.fillStyle = this.laneFlashes[i] > 0.15
+        ? `rgba(${levelRgb}, 0.35)`
+        : 'rgba(255, 255, 255, 0.04)';
+      ctx.strokeStyle = this.laneFlashes[i] > 0.15
+        ? '#ffffff'
+        : `rgba(${levelRgb}, 0.4)`;
       ctx.lineWidth = 2;
+
+      ctx.beginPath();
+      ctx.roundRect(-padW / 2, -padH / 2, padW, padH, 14);
+      ctx.fill();
       ctx.stroke();
 
-      ctx.fillStyle = 'rgba(255,255,255,0.25)';
+      // Huruf shortcut tipis
+      ctx.fillStyle = 'rgba(255, 255, 255, 0.25)';
       ctx.font = 'bold 12px sans-serif';
       ctx.textAlign = 'center';
-      ctx.fillText(keyLabels[i], cx, this.hitLineY + 4);
+      ctx.fillText(keyLabels[i], 0, 4);
+      ctx.restore();
     }
 
-    // 3. Gambar Balok Nada yang Jatuh
+    // 5. Gambar Balok Nada dengan Motion Trail & Kilau
     for (const note of this.notes) {
-      const x = note.lane * laneW + 10;
-      const w = laneW - 20;
-      const h = 26;
+      const x = note.lane * laneW + 9;
+      const w = laneW - 18;
+      const h = 30;
 
+      // Jejak ekor cahaya (Trail)
+      const trailGrad = ctx.createLinearGradient(0, note.y - 75, 0, note.y);
+      trailGrad.addColorStop(0, `rgba(${levelRgb}, 0)`);
+      trailGrad.addColorStop(1, `rgba(${levelRgb}, 0.28)`);
+      ctx.fillStyle = trailGrad;
+      ctx.fillRect(x + 4, note.y - 75, w - 8, 75);
+
+      // Badan Balok Utama
       ctx.fillStyle = levelColor;
       ctx.shadowColor = levelColor;
-      ctx.shadowBlur = 12;
+      ctx.shadowBlur = 14;
 
       ctx.beginPath();
-      ctx.roundRect(x, note.y - h / 2, w, h, 8);
+      ctx.roundRect(x, note.y - h / 2, w, h, 10);
       ctx.fill();
       ctx.shadowBlur = 0;
+
+      // Garis kilau putih di tengah balok
+      ctx.fillStyle = 'rgba(255, 255, 255, 0.65)';
+      ctx.beginPath();
+      ctx.roundRect(x + 8, note.y - 3, w - 16, 6, 3);
+      ctx.fill();
     }
 
-    // 4. Gambar Partikel Ledakan Ketukan
+    // 6. Shockwave Rings
+    for (const sw of this.shockwaves) {
+      ctx.beginPath();
+      ctx.arc(sw.x, sw.y, sw.radius, 0, Math.PI * 2);
+      ctx.strokeStyle = `rgba(${levelRgb}, ${Math.max(0, sw.alpha)})`;
+      ctx.lineWidth = 3;
+      ctx.stroke();
+    }
+
+    // 7. Partikel Ledakan Ketukan
     for (const p of this.particles) {
       ctx.globalAlpha = Math.max(0, p.alpha);
       ctx.fillStyle = p.color;
       ctx.beginPath();
-      ctx.arc(p.x, p.y, 4, 0, Math.PI * 2);
+      ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
       ctx.fill();
     }
     ctx.globalAlpha = 1;
+    ctx.restore();
   }
 
   finishGame() {
@@ -699,6 +841,11 @@ class RhythmEngine {
 // --- 3. INTERAKSI UI MENU UTAMA ---
 let rhythmEngine = null;
 
+function applyThemeColor(levelKey) {
+  const color = APP_CONFIG.levels[levelKey].color;
+  document.documentElement.style.setProperty('--active-theme', color);
+}
+
 function setupUIEvents() {
   rhythmEngine = new RhythmEngine();
 
@@ -723,7 +870,7 @@ function setupUIEvents() {
         el.querySelector('.badge-check').textContent = 'Pilih';
       });
       item.classList.add('selected');
-      item.querySelector('.badge-check').textContent = 'Dipilih';
+      item.querySelector('.badge-check').textContent = 'Aktif';
 
       appState.selectedSongId = item.dataset.song;
       appState.selectedSongBpm = Number(item.dataset.bpm) || 100;
@@ -731,7 +878,7 @@ function setupUIEvents() {
     });
   });
 
-  // Upload Lagu Lokal (MP3/WAV)
+  // Upload Lagu Lokal
   const fileInput = document.getElementById('audioFileInput');
   fileInput.addEventListener('change', (e) => {
     const file = e.target.files[0];
@@ -742,12 +889,13 @@ function setupUIEvents() {
     }
   });
 
-  // Pilih 4 Level Kesulitan
+  // Pilih 4 Level Kesulitan + Ubah Warna Tema Secara Dinamis
   document.querySelectorAll('.level-card').forEach((card) => {
     card.addEventListener('click', () => {
       document.querySelectorAll('.level-card').forEach((c) => c.classList.remove('selected'));
       card.classList.add('selected');
       appState.selectedLevel = card.dataset.level;
+      applyThemeColor(appState.selectedLevel);
     });
   });
 
@@ -807,7 +955,7 @@ function setupUIEvents() {
     settingsModal.classList.add('hidden');
   });
 
-  // Placeholder Tombol Aktivasi (Dihubungkan ke Cloudflare Worker di Tahap 3 & 4)
+  // Placeholder Tombol Aktivasi
   document.getElementById('activateBtn').addEventListener('click', () => {
     const code = document.getElementById('licenseInput').value.trim();
     if (!code) {
