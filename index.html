@@ -3,23 +3,28 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
-  <meta name="theme-color" content="#12141d" />
+  <meta name="theme-color" content="#0b0d14" />
   <title>ZenBeat — Game Musik Pelepas Penat</title>
   <link rel="manifest" href="manifest.json" />
   <link rel="stylesheet" href="style.css" />
 </head>
 <body>
+  <div class="ambient-glow" id="ambientGlow"></div>
+
   <div class="app-container">
     <!-- Header & Status Trial -->
     <header class="app-header">
       <div class="brand">
-        <h1>Zen<span>Beat</span></h1>
+        <div class="logo-row">
+          <span class="logo-icon">🎧</span>
+          <h1>Zen<span>Beat</span></h1>
+        </div>
         <p class="subtitle">Ketuk irama, buang penatmu</p>
       </div>
       <div class="header-actions">
         <div id="trialBadge" class="trial-badge">Memuat status...</div>
         <button id="installBtn" class="btn-install hidden" title="Install Aplikasi">
-          + Install App
+          ⬇ Install App
         </button>
       </div>
     </header>
@@ -28,34 +33,48 @@
     <main id="menuScreen" class="screen active">
       <!-- Bagian 1: Pilih Sumber Lagu -->
       <section class="card song-section">
-        <h2>1. Pilih Musik</h2>
+        <div class="section-title">
+          <span class="step-num">1</span>
+          <h2>Pilih Musik Pengusir Penat</h2>
+        </div>
         
         <div class="song-tabs">
-          <button class="tab-btn active" data-tab="builtin">Lagu Bawaan</button>
-          <button class="tab-btn" data-tab="local">Lagu Sendiri (MP3/WAV)</button>
+          <button class="tab-btn active" data-tab="builtin">🎶 Lagu Bawaan</button>
+          <button class="tab-btn" data-tab="local">📁 Lagu Sendiri (MP3)</button>
         </div>
 
         <!-- Tab Lagu Bawaan -->
         <div id="builtinTab" class="tab-content active">
           <div class="song-list" id="builtinSongList">
             <div class="song-item selected" data-song="lofi-chill" data-bpm="95">
-              <div class="song-info">
-                <strong>Hujan Sore di Kantor</strong>
-                <span>Lo-Fi Instrumental • 95 BPM</span>
+              <div class="song-left">
+                <div class="music-bars"><span></span><span></span><span></span></div>
+                <div class="song-info">
+                  <strong>Hujan Sore di Kantor</strong>
+                  <span>Lo-Fi Chill • 95 BPM</span>
+                </div>
               </div>
-              <span class="badge-check">Dipilih</span>
+              <span class="badge-check">Aktif</span>
             </div>
+
             <div class="song-item" data-song="night-drive" data-bpm="115">
-              <div class="song-info">
-                <strong>Pulang Tenggo</strong>
-                <span>Chill Synthwave • 115 BPM</span>
+              <div class="song-left">
+                <div class="music-bars"><span></span><span></span><span></span></div>
+                <div class="song-info">
+                  <strong>Pulang Tenggo</strong>
+                  <span>Synthwave • 115 BPM</span>
+                </div>
               </div>
               <span class="badge-check">Pilih</span>
             </div>
+
             <div class="song-item" data-song="coffee-rush" data-bpm="135">
-              <div class="song-info">
-                <strong>Kopi Sachet Tengah Malam</strong>
-                <span>Upbeat Electronic • 135 BPM</span>
+              <div class="song-left">
+                <div class="music-bars"><span></span><span></span><span></span></div>
+                <div class="song-info">
+                  <strong>Kopi Sachet Tengah Malam</strong>
+                  <span>Upbeat Electronic • 135 BPM</span>
+                </div>
               </div>
               <span class="badge-check">Pilih</span>
             </div>
@@ -66,8 +85,8 @@
         <div id="localTab" class="tab-content">
           <label for="audioFileInput" class="upload-box">
             <div class="upload-icon">🎵</div>
-            <strong id="uploadedFileName">Ketuk untuk pilih file lagu dari HP/Laptop</strong>
-            <span>Mendukung format .MP3, .WAV, .OGG, .M4A (100% Offline)</span>
+            <strong id="uploadedFileName">Ketuk untuk pilih lagu dari HP / Laptop</strong>
+            <span>Format .MP3, .WAV, .OGG, .M4A • 100% Offline</span>
           </label>
           <input type="file" id="audioFileInput" accept="audio/*" hidden />
         </div>
@@ -75,12 +94,15 @@
 
       <!-- Bagian 2: Pilih Tingkat Kesulitan (4 Level) -->
       <section class="card level-section">
-        <h2>2. Pilih Tingkat Kewarasan</h2>
+        <div class="section-title">
+          <span class="step-num">2</span>
+          <h2>Pilih Tingkat Kewarasan</h2>
+        </div>
         <div class="level-grid">
           <button class="level-card easy selected" data-level="easy">
             <div class="level-header">
               <span class="level-tag">EASY</span>
-              <span class="level-dot"></span>
+              <span class="level-emoji">🛌</span>
             </div>
             <h3>Mode Santuy</h3>
             <p>"Baru pulang, nyawa belum kumpul."</p>
@@ -89,7 +111,7 @@
           <button class="level-card normal" data-level="normal">
             <div class="level-header">
               <span class="level-tag">NORMAL</span>
-              <span class="level-dot"></span>
+              <span class="level-emoji">☕</span>
             </div>
             <h3>Mode Biasa Aja</h3>
             <p>"Standar UMR, yang penting jalan."</p>
@@ -98,7 +120,7 @@
           <button class="level-card hard" data-level="hard">
             <div class="level-header">
               <span class="level-tag">HARD</span>
-              <span class="level-dot"></span>
+              <span class="level-emoji">🔥</span>
             </div>
             <h3>Mode Sistem Kebut Semalam (SKS)</h3>
             <p>"Besok pagi dikumpulin, jempol jangan kendor!"</p>
@@ -107,7 +129,7 @@
           <button class="level-card extreme" data-level="extreme">
             <div class="level-header">
               <span class="level-tag">EXTREME</span>
-              <span class="level-dot"></span>
+              <span class="level-emoji">⚡</span>
             </div>
             <h3>Mode WNI</h3>
             <p>"Mental baja. Badai cobaan datang bersamaan!"</p>
@@ -117,22 +139,22 @@
 
       <!-- Tombol Mulai & Pengaturan Delay -->
       <div class="bottom-bar">
-        <button id="openSettingsBtn" class="btn-secondary">⚙️ Kalibrasi Delay</button>
+        <button id="openSettingsBtn" class="btn-secondary">⚙️ Delay</button>
         <button id="startGameBtn" class="btn-primary">MULAI MAIN ▶</button>
       </div>
     </main>
 
-    <!-- Layar Arena Game (Tahap 2: 4 Jalur Ritme Interaktif) -->
+    <!-- Layar Arena Game -->
     <section id="gameScreen" class="screen">
       <div class="game-hud">
-        <button id="backToMenuBtn" class="btn-small">⏹ Berhenti</button>
+        <button id="backToMenuBtn" class="btn-small">✕</button>
         <div class="hud-info">
           <span id="hudSongTitle">Judul Lagu</span>
           <span id="hudLevelName" class="hud-badge">Mode Santuy</span>
         </div>
         <div class="hud-score">
-          <small>Combo: <strong id="comboDisplay">0</strong>x</small>
-          <div>Skor: <strong id="scoreDisplay">0</strong></div>
+          <small>SKOR</small>
+          <strong id="scoreDisplay">0</strong>
         </div>
       </div>
 
@@ -141,13 +163,17 @@
         <div id="songProgressBar" class="progress-fill"></div>
       </div>
 
-      <div class="canvas-wrapper">
+      <div class="canvas-wrapper" id="canvasWrapper">
         <canvas id="gameCanvas"></canvas>
-        <!-- Feedback Teks Melayang (PERFECT / GOOD / MISS) -->
+
+        <!-- Hitung Mundur Sebelum Mulai -->
+        <div id="countdownOverlay" class="countdown-overlay hidden">
+          <span id="countdownText">3</span>
+        </div>
+
+        <!-- Feedback Teks Melayang -->
         <div id="hitFeedback" class="hit-feedback"></div>
       </div>
-
-      <p class="controls-hint">Sentuh jalur di layar HP atau tekan tombol <strong>D • F • J • K</strong> di keyboard</p>
     </section>
 
     <!-- Modal Hasil Akhir Permainan -->
@@ -178,7 +204,7 @@
 
         <div class="result-actions">
           <button id="playAgainBtn" class="btn-primary">Main Lagi ↻</button>
-          <button id="resultMenuBtn" class="btn-secondary">Pilih Lagu Lain</button>
+          <button id="resultMenuBtn" class="btn-secondary">Ganti Lagu</button>
         </div>
       </div>
     </div>
