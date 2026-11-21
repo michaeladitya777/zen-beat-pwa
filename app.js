@@ -262,35 +262,48 @@ function updateTrialUI() {
   return true;
 }
 
-// --- 2. SERVER AUDIO MANAGER, DOWNLOAD PROGRESS & AUTO LOADER ---
+// --- 2. SERVER AUDIO MANAGER (WEB AUDIO API BUFFER SFX AGAR LANGSUNG BUNYI & ZERO LATENCY) ---
 const serverAudioManager = {
   menuAudio: null,
   resultAudio: null,
-  sfxPool: {},
+  sfxBuffers: {},
+  sharedCtx: null,
   synthTimer: null,
-  synthCtx: null,
   isPlayingSynth: false,
 
-  init() {
-    Object.entries(APP_CONFIG.serverAudio.sfx).forEach(([key, src]) => {
-      const audio = new Audio(src);
-      audio.preload = 'auto';
-      this.sfxPool[key] = audio;
-    });
+  ensureCtx() {
+    if (!this.sharedCtx) {
+      const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+      this.sharedCtx = new AudioContextClass();
+    }
+    if (this.sharedCtx.state === 'suspended') {
+      this.sharedCtx.resume().catch(() => {});
+    }
+    return this.sharedCtx;
+  },
+
+  async init() {
+    const ctx = this.ensureCtx();
+    const entries = Object.entries(APP_CONFIG.serverAudio.sfx);
+
+    await Promise.all(entries.map(async ([key, src]) => {
+      try {
+        const res = await fetch(`${src}?v=${Date.now()}`);
+        if (!res.ok) return;
+        const arrayBuf = await res.arrayBuffer();
+        const audioBuf = await ctx.decodeAudioData(arrayBuf);
+        this.sfxBuffers[key] = audioBuf;
+      } catch (err) {
+        console.warn(`SFX file "${src}" belum terbaca, memakai suara cadangan:`, err.message);
+      }
+    }));
   },
 
   startFallbackSynthMenu() {
     if (this.isPlayingSynth || !appState.bgmEnabled) return;
     if (document.getElementById('gameScreen').classList.contains('active')) return;
 
-    const AudioContextClass = window.AudioContext || window.webkitAudioContext;
-    if (!this.synthCtx) {
-      this.synthCtx = new AudioContextClass();
-    }
-    if (this.synthCtx.state === 'suspended') {
-      this.synthCtx.resume().catch(() => {});
-    }
-
+    const ctx = this.ensureCtx();
     this.isPlayingSynth = true;
     const chords = [
       [174.61, 220.00, 261.63, 329.63],
@@ -307,13 +320,13 @@ const serverAudioManager = {
         return;
       }
 
-      const now = this.synthCtx.currentTime;
+      const now = ctx.currentTime;
       const notes = chords[step % chords.length];
       step++;
 
       notes.forEach((freq, idx) => {
-        const osc = this.synthCtx.createOscillator();
-        const gain = this.synthCtx.createGain();
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
         osc.type = 'sine';
         osc.frequency.setValueAtTime(freq, now + idx * 0.06);
 
@@ -322,7 +335,7 @@ const serverAudioManager = {
         gain.gain.exponentialRampToValueAtTime(0.0001, now + 2.3);
 
         osc.connect(gain);
-        gain.connect(this.synthCtx.destination);
+        gain.connect(ctx.destination);
         osc.start(now + idx * 0.06);
         osc.stop(now + 2.4);
       });
@@ -388,27 +401,31 @@ const serverAudioManager = {
     }
   },
 
-  playSfx(type, audioCtxFallback = null) {
+  playSfx(type) {
     if (!appState.sfxEnabled) return;
-    const baseAudio = this.sfxPool[type];
-    if (baseAudio && baseAudio.readyState >= 2) {
-      const clone = baseAudio.cloneNode();
-      clone.volume = type === 'scoreTick' ? 0.35 : 0.8;
-      clone.play().catch(() => {});
+    const ctx = this.ensureCtx();
+
+    // 1. Prioritaskan AudioBuffer dari file server (assets/audio/sfx/*.mp3)
+    const buffer = this.sfxBuffers[type];
+    if (buffer) {
+      const source = ctx.createBufferSource();
+      const gainNode = ctx.createGain();
+      source.buffer = buffer;
+      gainNode.gain.value = type === 'scoreTick' ? 0.45 : 0.9;
+      source.connect(gainNode);
+      gainNode.connect(ctx.destination);
+      source.start(0);
       return;
     }
 
-    const ctx = audioCtxFallback || this.synthCtx;
-    if (!ctx) return;
-    if (ctx.state === 'suspended') ctx.resume().catch(() => {});
-
+    // 2. Suara cadangan instan jika file mp3 belum ada di folder sfx
     const now = ctx.currentTime;
     const osc = ctx.createOscillator();
     const gain = ctx.createGain();
     osc.type = type === 'miss' ? 'sawtooth' : 'triangle';
     const freqMap = { perfect: 1046, slide: 1318, tap: 660, miss: 130, scoreTick: 880 };
     osc.frequency.setValueAtTime(freqMap[type] || 660, now);
-    gain.gain.setValueAtTime(0.05, now);
+    gain.gain.setValueAtTime(0.07, now);
     gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.09);
     osc.connect(gain);
     gain.connect(ctx.destination);
@@ -503,6 +520,30 @@ async function downloadServerSongWithProgress(src, onProgress) {
   return blob;
 }
 
+function getBuiltinHighScores(songId) {
+  const levels = ['easy', 'normal', 'hard', 'extreme'];
+  const result = {};
+  levels.forEach((lk) => {
+    const key = `builtin_hs_${songId}_${lk}`;
+    result[lk] = Number(localStorage.getItem(APP_CONFIG.storageKeyPrefix + key) || 0);
+  });
+  return result;
+}
+
+function buildScoreGridHtml(scores) {
+  const levelKeys = ['easy', 'normal', 'hard', 'extreme'];
+  return levelKeys.map((lk) => {
+    const cfg = APP_CONFIG.levels[lk];
+    const val = scores[lk] || 0;
+    return `
+      <div class="hs-badge">
+        <small style="color: ${cfg.color}">${cfg.short}</small>
+        <span>${val > 0 ? val.toLocaleString('id-ID') : '-'}</span>
+      </div>
+    `;
+  }).join('');
+}
+
 async function selectAndPrepareServerSong(song, cardEl, autoPlayPreview = true) {
   if (appState.isDownloadingSong) return;
 
@@ -521,7 +562,6 @@ async function selectAndPrepareServerSong(song, cardEl, autoPlayPreview = true) 
   const fillEl = cardEl.querySelector('.dl-fill');
   const pctEl = cardEl.querySelector('.dl-pct');
 
-  // Cek apakah sudah pernah terunduh di perangkat
   let cachedBlob = await getServerSongBlob(song.src);
   if (cachedBlob && cachedBlob.size > 1024) {
     appState.serverSongBlob = cachedBlob;
@@ -534,7 +574,6 @@ async function selectAndPrepareServerSong(song, cardEl, autoPlayPreview = true) 
     return;
   }
 
-  // Jika belum ada, tampilkan progress download secara real-time
   appState.isDownloadingSong = true;
   appState.serverSongBlob = null;
   pillEl.textContent = 'MENGUNDUH...';
@@ -578,14 +617,17 @@ async function loadBuiltinSongsFromJson() {
       return;
     }
 
+    const prevSelectedId = appState.selectedSongId;
     container.innerHTML = '';
+
     for (let idx = 0; idx < songs.length; idx++) {
       const song = songs[idx];
-      const isFirst = idx === 0;
+      const isSelected = prevSelectedId ? (song.id === prevSelectedId) : (idx === 0);
       const existingBlob = await getServerSongBlob(song.src);
       const isDownloaded = existingBlob && existingBlob.size > 1024;
+      const scores = getBuiltinHighScores(song.id);
 
-      if (isFirst) {
+      if (isSelected) {
         appState.selectedSongId = song.id;
         appState.selectedSongSrc = song.src;
         appState.selectedSongTitle = song.title;
@@ -593,7 +635,7 @@ async function loadBuiltinSongsFromJson() {
       }
 
       const card = document.createElement('div');
-      card.className = `song-card-3d ${isFirst ? 'selected' : ''}`;
+      card.className = `song-card-3d ${isSelected ? 'selected' : ''}`;
       card.dataset.song = song.id;
       card.dataset.src = song.src;
       card.innerHTML = `
@@ -612,6 +654,9 @@ async function loadBuiltinSongsFromJson() {
         <div class="dl-progress-wrap hidden">
           <div class="dl-track"><div class="dl-fill"></div></div>
           <span class="dl-pct">0%</span>
+        </div>
+        <div class="history-scores-grid">
+          ${buildScoreGridHtml(scores)}
         </div>
       `;
 
@@ -689,22 +734,9 @@ function renderLocalHistory() {
   wrapper.classList.remove('hidden');
   listEl.innerHTML = '';
 
-  const levelKeys = ['easy', 'normal', 'hard', 'extreme'];
-
   history.forEach((item) => {
     const isSelected = appState.selectedSource === 'local' && appState.selectedSongTitle === item.title;
     const scores = item.scores || { easy: 0, normal: 0, hard: 0, extreme: 0 };
-
-    const badgesHtml = levelKeys.map((lk) => {
-      const cfg = APP_CONFIG.levels[lk];
-      const val = scores[lk] || 0;
-      return `
-        <div class="hs-badge">
-          <small style="color: ${cfg.color}">${cfg.short}</small>
-          <span>${val > 0 ? val.toLocaleString('id-ID') : '-'}</span>
-        </div>
-      `;
-    }).join('');
 
     const div = document.createElement('div');
     div.className = `history-item ${isSelected ? 'active-history' : ''}`;
@@ -714,7 +746,7 @@ function renderLocalHistory() {
         ${isSelected ? '<span class="history-active-pill">DIPILIH</span>' : ''}
       </div>
       <div class="history-scores-grid">
-        ${badgesHtml}
+        ${buildScoreGridHtml(scores)}
       </div>
     `;
 
@@ -739,7 +771,7 @@ function renderLocalHistory() {
   });
 }
 
-// --- 4. MESIN GAME (NOTE LEBIH TINGGI, 3D PILL LEBAR, HOLD COMBO & LOST, GRADE SSS-F) ---
+// --- 4. MESIN GAME (SLIDE BEBAS SEMUA ARAH, GRADE BAR, JUDUL DI COUNTDOWN) ---
 class RhythmEngine {
   constructor() {
     this.canvas = document.getElementById('gameCanvas');
@@ -796,7 +828,6 @@ class RhythmEngine {
     this.ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     this.width = rect.width;
     this.height = rect.height;
-    // Posisi garis target & tuts dinaikkan lebih tinggi agar jempol sangat nyaman
     this.hitLineY = this.height - 175;
   }
 
@@ -808,6 +839,7 @@ class RhythmEngine {
 
       const rect = this.canvas.getBoundingClientRect();
       const x = e.clientX - rect.left;
+      const y = e.clientY - rect.top;
       const lane = Math.floor(x / (this.width / 4));
 
       if (lane >= 0 && lane < 4) {
@@ -815,11 +847,13 @@ class RhythmEngine {
         this.activeTouches.set(e.pointerId, {
           lane,
           startX: x,
+          startY: y,
           noteRef: hitNote
         });
       }
     });
 
+    // Slide mendukung geseran ke SEMUA ARAH (kiri, kanan, atas, bawah, diagonal)
     this.canvas.addEventListener('pointermove', (e) => {
       if (!this.isRunning || this.isPaused) return;
       const touchData = this.activeTouches.get(e.pointerId);
@@ -827,12 +861,13 @@ class RhythmEngine {
 
       const rect = this.canvas.getBoundingClientRect();
       const currentX = e.clientX - rect.left;
-      const deltaX = currentX - touchData.startX;
+      const currentY = e.clientY - rect.top;
+      const distance = Math.hypot(currentX - touchData.startX, currentY - touchData.startY);
 
-      if (Math.abs(deltaX) >= 24) {
-        const dir = deltaX > 0 ? 1 : -1;
-        this.handleSlideGesture(touchData.lane, dir);
+      if (distance >= 22) {
+        this.handleSlideGesture(touchData.lane);
         touchData.startX = currentX;
+        touchData.startY = currentY;
       }
     });
 
@@ -853,10 +888,8 @@ class RhythmEngine {
         const lane = keyMap[e.code];
         this.activeKeys.add(lane);
         this.handleLaneDown(lane);
-      } else if (e.code === 'ArrowLeft') {
-        this.handleSlideGesture(-1, -1);
-      } else if (e.code === 'ArrowRight') {
-        this.handleSlideGesture(-1, 1);
+      } else if (['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'Space'].includes(e.code)) {
+        this.handleSlideGesture(-1);
       }
     });
 
@@ -874,6 +907,14 @@ class RhythmEngine {
     return new Promise((resolve) => {
       const overlay = document.getElementById('countdownOverlay');
       const textEl = document.getElementById('countdownText');
+      const titleEl = document.getElementById('countdownSongTitle');
+      const levelEl = document.getElementById('countdownLevelBadge');
+
+      const levelInfo = APP_CONFIG.levels[appState.selectedLevel];
+      titleEl.textContent = appState.selectedSongTitle;
+      levelEl.textContent = `${levelInfo.short} • ${levelInfo.name}`;
+      levelEl.style.color = levelInfo.color;
+
       const steps = ['3', '2', '1'];
       let idx = 0;
 
@@ -939,7 +980,6 @@ class RhythmEngine {
       await this.audioCtx.resume();
     }
 
-    // Gunakan Blob hasil unduhan jika sudah siap di memori perangkat
     const audioSource = appState.selectedSource === 'local'
       ? appState.localAudioBlob
       : (appState.serverSongBlob || appState.selectedSongSrc);
@@ -1065,15 +1105,12 @@ class RhythmEngine {
         });
         this.lastSpawnTime = now + (holdLength / levelCfg.speed) * 650;
       } else if (levelCfg.slideChance > 0 && roll < levelCfg.holdChance + levelCfg.slideChance) {
-        // Slide hanya muncul jika levelCfg.slideChance > 0 (Hard & Extreme)
         const startLane = Math.floor(Math.random() * 3);
-        const dir = Math.random() < 0.5 ? -1 : 1;
         this.notes.push({
           type: 'slide',
           lane: startLane,
           span: 2,
           y: -35,
-          slideDir: dir,
           hit: false
         });
         this.lastSpawnTime = now;
@@ -1146,7 +1183,8 @@ class RhythmEngine {
     return closestNote;
   }
 
-  handleSlideGesture(startLane, dir) {
+  // Slide bebas ke semua arah
+  handleSlideGesture(startLane) {
     const offsetPixels = (appState.audioOffset / 1000) * APP_CONFIG.levels[appState.selectedLevel].speed;
     const targetY = this.hitLineY + offsetPixels;
 
@@ -1155,7 +1193,7 @@ class RhythmEngine {
         const laneMatch = startLane === -1 || startLane === note.lane || startLane === note.lane + 1 || note.touched;
         const diff = Math.abs(note.y - targetY);
 
-        if (laneMatch && diff <= 125 && note.slideDir === dir) {
+        if (laneMatch && diff <= 125) {
           note.hit = true;
           this.missStreak = 0;
           this.laneFlashes[note.lane] = 1.0;
@@ -1170,7 +1208,7 @@ class RhythmEngine {
           const isMilestone = this.perfectStreak >= 25 && this.perfectStreak % 25 === 0;
           const label = isMilestone ? `PERFECT x${this.perfectStreak}` : 'SLIDE PERFECT!';
           this.showFeedback(label, isMilestone ? 'anim-perfect-milestone' : 'anim-perfect');
-          serverAudioManager.playSfx('slide', this.audioCtx);
+          serverAudioManager.playSfx('slide');
 
           if (this.combo > this.maxCombo) this.maxCombo = this.combo;
           this.comboPulse = 1.35;
@@ -1185,7 +1223,6 @@ class RhythmEngine {
     }
   }
 
-  // Jika Hold dilepas terlalu cepat (hanya di-tap): Combo hilang, tidak dihitung Miss, tapi tercatat LOST
   handleLaneRelease(lane) {
     for (const note of this.notes) {
       if (note.type === 'hold' && note.lane === lane && note.holding && !note.hit) {
@@ -1194,22 +1231,20 @@ class RhythmEngine {
         note.hit = true;
 
         if (tailY >= this.hitLineY - 55) {
-          // Berhasil ditahan hampir sampai ujung
           this.score += 100;
           this.combo++;
           this.perfectCount++;
           if (this.combo > this.maxCombo) this.maxCombo = this.combo;
           this.showFeedback('HOLD CLEAR!', 'anim-good');
-          serverAudioManager.playSfx('perfect', this.audioCtx);
+          serverAudioManager.playSfx('perfect');
           this.spawnHitEffects(lane);
           this.updateScoreHUD();
         } else {
-          // Hanya di-tap / dilepas terlalu cepat -> LOST (Hilangkan Combo, bukan Miss, menghalangi SSS)
           this.combo = 0;
           this.perfectStreak = 0;
           this.lostCount++;
           this.showFeedback('LOST', 'anim-lost');
-          serverAudioManager.playSfx('tap', this.audioCtx);
+          serverAudioManager.playSfx('tap');
         }
       }
     }
@@ -1232,7 +1267,7 @@ class RhythmEngine {
         : (this.perfectStreak > 1 ? `PERFECT x${this.perfectStreak}` : 'PERFECT!');
 
       this.showFeedback(label, isMilestone ? 'anim-perfect-milestone' : 'anim-perfect');
-      serverAudioManager.playSfx('perfect', this.audioCtx);
+      serverAudioManager.playSfx('perfect');
 
       this.shakeIntensity = isMilestone ? 6.5 : 1.5;
       if (navigator.vibrate) navigator.vibrate(isMilestone ? 30 : 14);
@@ -1247,7 +1282,7 @@ class RhythmEngine {
       }
 
       this.showFeedback('GOOD', 'anim-good');
-      serverAudioManager.playSfx('tap', this.audioCtx);
+      serverAudioManager.playSfx('tap');
     } else {
       this.score += 15;
       this.combo = 0;
@@ -1255,7 +1290,7 @@ class RhythmEngine {
       this.badCount++;
 
       this.showFeedback('BAD', 'anim-bad');
-      serverAudioManager.playSfx('tap', this.audioCtx);
+      serverAudioManager.playSfx('tap');
     }
 
     if (this.combo > this.maxCombo) this.maxCombo = this.combo;
@@ -1354,7 +1389,6 @@ class RhythmEngine {
         note.tickAccum += dt;
         if (note.tickAccum >= 0.08) {
           note.tickAccum = 0;
-          // Combo dan Skor terus berjalan selama ditahan
           this.combo++;
           if (this.combo > this.maxCombo) this.maxCombo = this.combo;
           this.comboPulse = 1.25;
@@ -1371,7 +1405,7 @@ class RhythmEngine {
           if (this.combo > this.maxCombo) this.maxCombo = this.combo;
           this.life = Math.min(100, this.life + 3);
           this.showFeedback('HOLD PERFECT!', 'anim-perfect');
-          serverAudioManager.playSfx('perfect', this.audioCtx);
+          serverAudioManager.playSfx('perfect');
           this.updateScoreHUD();
           this.updateLifeUI();
         }
@@ -1387,7 +1421,7 @@ class RhythmEngine {
 
           this.life = Math.max(0, this.life - levelCfg.missDamage);
           this.updateLifeUI();
-          serverAudioManager.playSfx('miss', this.audioCtx);
+          serverAudioManager.playSfx('miss');
 
           const missLabel = this.missStreak > 1 ? `MISS x${this.missStreak}` : 'MISS';
           this.showFeedback(missLabel, 'anim-miss');
@@ -1432,18 +1466,15 @@ class RhythmEngine {
     this.animFrameId = requestAnimationFrame((t) => this.loop(t));
   }
 
-  // Helper Gambar Balok 3D Kapsul Lebar (Tidak Kotak Datar)
   draw3DCapsuleNote(ctx, x, yCenter, w, h, mainColor, shadowColor) {
     const top = yCenter - h / 2;
-    const radius = h / 2; // Bentuk kapsul/pill 3D bulat di ujung
+    const radius = h / 2;
 
-    // 1. Bayangan Bawah Tebal 3D (Extrusion Depth)
     ctx.fillStyle = shadowColor;
     ctx.beginPath();
     ctx.roundRect(x, top + 6, w, h, radius);
     ctx.fill();
 
-    // 2. Badan Utama 3D
     ctx.fillStyle = mainColor;
     ctx.shadowColor = mainColor;
     ctx.shadowBlur = 14;
@@ -1452,7 +1483,6 @@ class RhythmEngine {
     ctx.fill();
     ctx.shadowBlur = 0;
 
-    // 3. Kilau Cahaya Atas (3D Glossy Rim)
     ctx.fillStyle = 'rgba(255, 255, 255, 0.48)';
     ctx.beginPath();
     ctx.roundRect(x + 10, top + 5, w - 20, 8, 4);
@@ -1544,7 +1574,7 @@ class RhythmEngine {
       }
     }
 
-    // 4. Tuts Bawah Menyatu (Lebih Lebar & Tinggi)
+    // 4. Tuts Bawah Menyatu
     const keyLabels = ['D', 'F', 'J', 'K'];
     for (let i = 0; i < 4; i++) {
       const padW = laneW - 2;
@@ -1571,7 +1601,7 @@ class RhythmEngine {
       ctx.restore();
     }
 
-    // 5. Garis Target Semi-Transparan Berkedip Sesuai Deteksi Beat Bass Real-Time
+    // 5. Garis Target Berkedip Sesuai Bass
     const pulseAlpha = 0.22 + this.beatPulse * 0.72;
     const pulseWidth = 2 + this.beatPulse * 3.5;
     ctx.save();
@@ -1587,7 +1617,7 @@ class RhythmEngine {
     ctx.stroke();
     ctx.restore();
 
-    // 6. Gambar Balok Nada 3D Kapsul Lebar (Tap, Hold, dan Slide 2 Tuts)
+    // 6. Gambar Balok Nada 3D Kapsul Lebar
     for (const note of this.notes) {
       if (note.type === 'slide') {
         const x = note.lane * laneW + 2;
@@ -1603,10 +1633,9 @@ class RhythmEngine {
         this.draw3DCapsuleNote(ctx, x, note.y, w, h, '#facc15', '#a16207');
 
         ctx.fillStyle = '#070913';
-        ctx.font = '900 15px Outfit, sans-serif';
+        ctx.font = '900 14px Outfit, sans-serif';
         ctx.textAlign = 'center';
-        const arrowLabel = note.slideDir === 1 ? 'GESER  ▶ ▶ ▶' : '◀ ◀ ◀  GESER';
-        ctx.fillText(arrowLabel, x + w / 2, note.y + 6);
+        ctx.fillText('✦ GESER BEBAS ✦', x + w / 2, note.y + 5.5);
         continue;
       }
 
@@ -1619,7 +1648,6 @@ class RhythmEngine {
         const tailY = note.y - note.length;
         const bodyH = Math.max(0, headY - tailY);
 
-        // Badan ekor Hold lebar 3D
         ctx.fillStyle = `rgba(${levelRgb}, 0.34)`;
         ctx.beginPath();
         ctx.roundRect(x + 6, tailY, w - 12, bodyH, 16);
@@ -1666,28 +1694,33 @@ class RhythmEngine {
   }
 
   calculateGrade(accuracy, isGameOver) {
-    if (isGameOver || accuracy < 45) return { grade: 'F', cls: 'grade-f', title: 'Gagal Fokus!' };
-    // Jika ada Hold yang cuma di-tap (lostCount > 0), tidak bisa mendapat grade SSS atau SS
+    if (isGameOver || accuracy < 45) return { grade: 'F', cls: 'grade-f', title: 'Gagal Fokus!', barPct: 12 };
     if (accuracy >= 99 && this.missCount === 0 && this.badCount === 0 && this.lostCount === 0) {
-      return { grade: 'SSS', cls: 'grade-sss', title: 'DEWA RITME! SEMPURNA!' };
+      return { grade: 'SSS', cls: 'grade-sss', title: 'DEWA RITME! SEMPURNA!', barPct: 100 };
     }
     if (accuracy >= 96 && this.missCount === 0 && this.lostCount === 0) {
-      return { grade: 'SS', cls: 'grade-ss', title: 'NYARIS SEMPURNA!' };
+      return { grade: 'SS', cls: 'grade-ss', title: 'NYARIS SEMPURNA!', barPct: 90 };
     }
-    if (accuracy >= 90) return { grade: 'S', cls: 'grade-s', title: 'Luar Biasa! Stres Hilang!' };
-    if (accuracy >= 80) return { grade: 'A', cls: 'grade-a', title: 'Mantap! Ritmemu Stabil!' };
-    if (accuracy >= 70) return { grade: 'B', cls: 'grade-b', title: 'Bagus! Tetap Santuy!' };
-    if (accuracy >= 60) return { grade: 'C', cls: 'grade-c', title: 'Lumayan Buat Lemesin Jari!' };
-    return { grade: 'D', cls: 'grade-d', title: 'Nyaris Kalah, Coba Lagi!' };
+    if (accuracy >= 90) return { grade: 'S', cls: 'grade-s', title: 'Luar Biasa! Stres Hilang!', barPct: 78 };
+    if (accuracy >= 80) return { grade: 'A', cls: 'grade-a', title: 'Mantap! Ritmemu Stabil!', barPct: 64 };
+    if (accuracy >= 70) return { grade: 'B', cls: 'grade-b', title: 'Bagus! Tetap Santuy!', barPct: 50 };
+    if (accuracy >= 60) return { grade: 'C', cls: 'grade-c', title: 'Lumayan Buat Lemesin Jari!', barPct: 36 };
+    return { grade: 'D', cls: 'grade-d', title: 'Nyaris Kalah, Coba Lagi!', barPct: 24 };
   }
 
   animateScoreCounter(targetScore, highScore, gradeInfo) {
     const scoreEl = document.getElementById('finalScore');
     const highEl = document.getElementById('finalHighScore');
     const rankEl = document.getElementById('resultRank');
+    const gradeBarEl = document.getElementById('gradeBarFill');
 
     rankEl.textContent = '?';
     rankEl.className = 'result-rank';
+    gradeBarEl.style.width = '0%';
+
+    requestAnimationFrame(() => {
+      gradeBarEl.style.width = `${gradeInfo.barPct}%`;
+    });
 
     const durationMs = 1150;
     const startTime = performance.now();
@@ -1734,6 +1767,7 @@ class RhythmEngine {
       const prev = Number(localStorage.getItem(APP_CONFIG.storageKeyPrefix + key) || 0);
       highScore = Math.max(prev, this.score);
       localStorage.setItem(APP_CONFIG.storageKeyPrefix + key, String(highScore));
+      loadBuiltinSongsFromJson(); // Perbarui tampilan High Score pada daftar lagu server
     }
 
     const totalNotes = this.perfectCount + this.goodCount + this.badCount + this.lostCount + this.missCount;
@@ -1807,13 +1841,14 @@ function setupUIEvents() {
   serverAudioManager.init();
   rhythmEngine = new RhythmEngine();
 
-  const unlockThemeAudio = () => {
+  const unlockAudioSystem = () => {
+    serverAudioManager.ensureCtx();
     serverAudioManager.startMenuTheme();
-    window.removeEventListener('pointerdown', unlockThemeAudio);
-    window.removeEventListener('keydown', unlockThemeAudio);
+    window.removeEventListener('pointerdown', unlockAudioSystem);
+    window.removeEventListener('keydown', unlockAudioSystem);
   };
-  window.addEventListener('pointerdown', unlockThemeAudio);
-  window.addEventListener('keydown', unlockThemeAudio);
+  window.addEventListener('pointerdown', unlockAudioSystem);
+  window.addEventListener('keydown', unlockAudioSystem);
 
   const bgmBtn = document.getElementById('bgmToggleBtn');
   bgmBtn.addEventListener('click', (e) => {
@@ -1883,6 +1918,7 @@ function setupUIEvents() {
 
   document.getElementById('startGameBtn').addEventListener('click', async () => {
     if (!updateTrialUI()) return;
+    serverAudioManager.ensureCtx();
 
     if (appState.isDownloadingSong) {
       alert('Tunggu sebentar sampai proses unduhan lagu selesai (100%) ya!');
@@ -1894,7 +1930,6 @@ function setupUIEvents() {
       return;
     }
 
-    // Jika lagu server dipilih namun belum terunduh sama sekali, otomatis unduh dulu sebelum masuk
     if (appState.selectedSource === 'builtin' && !appState.serverSongBlob) {
       const selectedCard = document.querySelector('.song-card-3d.selected');
       if (selectedCard) {
@@ -1910,12 +1945,6 @@ function setupUIEvents() {
       }
       if (!appState.serverSongBlob) return;
     }
-
-    const levelInfo = APP_CONFIG.levels[appState.selectedLevel];
-    document.getElementById('hudSongTitle').textContent = appState.selectedSongTitle;
-    const badge = document.getElementById('hudLevelName');
-    badge.textContent = levelInfo.name;
-    badge.style.color = levelInfo.color;
 
     enterFullScreenGame();
     await rhythmEngine.start();
@@ -1955,6 +1984,7 @@ function setupUIEvents() {
   document.getElementById('sfxToggleCheckbox').addEventListener('change', (e) => {
     appState.sfxEnabled = e.target.checked;
     localStorage.setItem(APP_CONFIG.storageKeyPrefix + 'sfxEnabled', String(appState.sfxEnabled));
+    if (appState.sfxEnabled) serverAudioManager.playSfx('tap');
   });
 
   document.getElementById('offsetSlider').addEventListener('input', (e) => {
