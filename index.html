@@ -15,9 +15,9 @@
   <div class="ambient-orb orb-1"></div>
   <div class="ambient-orb orb-2"></div>
 
-  <div class="app-container">
-    <!-- Header 3D Floating -->
-    <header class="app-header">
+  <div class="app-container" id="appContainer">
+    <!-- Header 3D Floating (Otomatis tersembunyi saat In-Game) -->
+    <header class="app-header" id="mainHeader">
       <div class="brand">
         <div class="logo-3d">🎧</div>
         <div>
@@ -50,41 +50,10 @@
           <button class="tab-btn" data-tab="local">📁 Lagu Sendiri</button>
         </div>
 
-        <!-- Tab Lagu Bawaan Server -->
+        <!-- Tab Lagu Bawaan (Dimuat Otomatis dari songs.json) -->
         <div id="builtinTab" class="tab-content active">
           <div class="song-list" id="builtinSongList">
-            <div class="song-card-3d selected" data-song="hujan-sore" data-src="assets/audio/songs/hujan-sore.mp3">
-              <div class="song-left">
-                <div class="album-3d c-cyan">🌧️</div>
-                <div class="song-info">
-                  <strong>Hujan Sore di Kantor</strong>
-                  <span>Lo-Fi Chill • Server Audio</span>
-                </div>
-              </div>
-              <span class="status-pill">AKTIF</span>
-            </div>
-
-            <div class="song-card-3d" data-song="pulang-tenggo" data-src="assets/audio/songs/pulang-tenggo.mp3">
-              <div class="song-left">
-                <div class="album-3d c-purple">🌃</div>
-                <div class="song-info">
-                  <strong>Pulang Tenggo</strong>
-                  <span>Synthwave • Server Audio</span>
-                </div>
-              </div>
-              <span class="status-pill">PILIH</span>
-            </div>
-
-            <div class="song-card-3d" data-song="kopi-sachet" data-src="assets/audio/songs/kopi-sachet.mp3">
-              <div class="song-left">
-                <div class="album-3d c-amber">☕</div>
-                <div class="song-info">
-                  <strong>Kopi Sachet Tengah Malam</strong>
-                  <span>Upbeat Electronic • Server Audio</span>
-                </div>
-              </div>
-              <span class="status-pill">PILIH</span>
-            </div>
+            <div class="loading-songs">Memuat daftar lagu...</div>
           </div>
         </div>
 
@@ -162,7 +131,7 @@
       </div>
     </main>
 
-    <!-- Layar Arena Game (Tanpa Tulisan "NYAWA") -->
+    <!-- Layar Arena Game Full Screen -->
     <section id="gameScreen" class="screen">
       <div class="game-hud">
         <button id="pauseGameBtn" class="btn-hud-3d" title="Jeda">⏸</button>
@@ -212,37 +181,55 @@
       </div>
     </div>
 
-    <!-- Modal Hasil Akhir (Animasi Skor + Grade SSS sampai F) -->
+    <!-- Modal Hasil Akhir Horizontal (Enak Dibaca & Tidak Terpotong) -->
     <div id="resultModal" class="modal hidden">
-      <div class="modal-surface-3d result-box">
-        <div id="resultRank" class="result-rank grade-s">SSS</div>
-        <h3 id="resultTitle">Luar Biasa!</h3>
-        <p id="resultSubtitle">Pikiranmu sudah lebih segar sekarang.</p>
-
-        <div class="stats-grid">
-          <div class="stat-card-3d">
-            <span>Total Skor</span>
-            <strong id="finalScore" class="rolling-number">0</strong>
-          </div>
-          <div class="stat-card-3d">
-            <span id="finalHighScoreLabel">Highest Score</span>
-            <strong id="finalHighScore" class="text-cyan">0</strong>
-          </div>
-          <div class="stat-card-3d">
-            <span>Max Combo</span>
-            <strong id="finalMaxCombo">0x</strong>
-          </div>
-          <div class="stat-card-3d">
-            <span>P / G / B / M</span>
-            <strong class="stat-breakdown">
-              <span id="finalPerfect" class="text-cyan">0</span> /
-              <span id="finalGood" class="text-green">0</span> /
-              <span id="finalBad" class="text-pink">0</span> /
-              <span id="finalMiss" class="text-rose">0</span>
-            </strong>
+      <div class="modal-surface-3d result-box-horizontal">
+        <!-- Baris Atas: Grade di Kiri, Judul & Akurasi di Kanan -->
+        <div class="result-top-row">
+          <div id="resultRank" class="result-rank grade-s">SSS</div>
+          <div class="result-headline">
+            <h3 id="resultTitle">Luar Biasa!</h3>
+            <p id="resultSubtitle">Akurasi Ketukan: 100%</p>
           </div>
         </div>
 
+        <!-- Baris Tengah: 3 Kartu Horizontal (Skor, High Score, Max Combo) -->
+        <div class="result-main-metrics">
+          <div class="metric-pill-3d">
+            <span>TOTAL SKOR</span>
+            <strong id="finalScore">0</strong>
+          </div>
+          <div class="metric-pill-3d">
+            <span id="finalHighScoreLabel">HIGH SCORE</span>
+            <strong id="finalHighScore" class="text-cyan">0</strong>
+          </div>
+          <div class="metric-pill-3d">
+            <span>MAX COMBO</span>
+            <strong id="finalMaxCombo">0x</strong>
+          </div>
+        </div>
+
+        <!-- Baris Bawah: 4 Kolom Horizontal Sejajar (Perfect, Good, Bad, Miss) -->
+        <div class="result-judgement-row">
+          <div class="judge-box">
+            <small class="text-cyan">PERFECT</small>
+            <strong id="finalPerfect">0</strong>
+          </div>
+          <div class="judge-box">
+            <small class="text-green">GOOD</small>
+            <strong id="finalGood">0</strong>
+          </div>
+          <div class="judge-box">
+            <small class="text-pink">BAD</small>
+            <strong id="finalBad">0</strong>
+          </div>
+          <div class="judge-box">
+            <small class="text-rose">MISS</small>
+            <strong id="finalMiss">0</strong>
+          </div>
+        </div>
+
+        <!-- Tombol Aksi Horizontal -->
         <div class="result-actions">
           <button id="playAgainBtn" class="btn-3d btn-play">Main Lagi ↻</button>
           <button id="resultMenuBtn" class="btn-3d btn-sec">Ganti Lagu</button>
