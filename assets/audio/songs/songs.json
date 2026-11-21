@@ -1,26 +1,10 @@
 [
   {
-    "id": "hujan-sore",
-    "title": "Hujan Sore di Kantor",
-    "subtitle": "Lo-Fi Chill • Server Audio",
-    "src": "assets/audio/songs/hujan-sore.mp3",
-    "icon": "🌧️",
+    "id": "Lonceng Sukacita",
+    "title": "Lonceng Sukacita",
+    "subtitle": "Server Audio • Auto Sync",
+    "src": "assets/audio/songs/Lonceng Sukacita.mp3",
+    "icon": "🎵",
     "color": "c-cyan"
-  },
-  {
-    "id": "pulang-tenggo",
-    "title": "Pulang Tenggo",
-    "subtitle": "Synthwave • Server Audio",
-    "src": "assets/audio/songs/pulang-tenggo.mp3",
-    "icon": "🌃",
-    "color": "c-purple"
-  },
-  {
-    "id": "kopi-sachet",
-    "title": "Kopi Sachet Tengah Malam",
-    "subtitle": "Upbeat Electronic • Server Audio",
-    "src": "assets/audio/songs/kopi-sachet.mp3",
-    "icon": "☕",
-    "color": "c-amber"
   }
 ]
