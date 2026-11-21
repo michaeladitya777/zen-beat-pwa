@@ -13,7 +13,7 @@ const APP_CONFIG = {
       slide: 'assets/audio/sfx/slide.mp3',
       miss: 'assets/audio/sfx/miss.mp3',
       scoreTick: 'assets/audio/sfx/score-tick.mp3',
-      buttonClick: 'assets/audio/sfx/click.mp3' // SFX saat klik tombol menu/UI
+      buttonClick: 'assets/audio/sfx/click.mp3'
     },
     bgm: {
       clear: 'assets/audio/bgm/clear.mp3',
@@ -30,7 +30,8 @@ const APP_CONFIG = {
       cooldown: 640,
       doubleChance: 0,
       holdChance: 0.16,
-      slideChance: 0, // Slide hanya di Hard & Extreme
+      slideChance: 0,
+      slideCooldownMs: 999999,
       beatThreshold: 172,
       missDamage: 7
     },
@@ -43,7 +44,8 @@ const APP_CONFIG = {
       cooldown: 430,
       doubleChance: 0.05,
       holdChance: 0.20,
-      slideChance: 0, // Slide hanya di Hard & Extreme
+      slideChance: 0,
+      slideCooldownMs: 999999,
       beatThreshold: 158,
       missDamage: 9
     },
@@ -56,7 +58,8 @@ const APP_CONFIG = {
       cooldown: 245,
       doubleChance: 0.14,
       holdChance: 0.22,
-      slideChance: 0.18,
+      slideChance: 0.10,       // Lebih jarang agar tidak terlalu sering
+      slideCooldownMs: 1850,   // Jeda minimal 1,85 detik antar slider
       beatThreshold: 144,
       missDamage: 10
     },
@@ -69,7 +72,8 @@ const APP_CONFIG = {
       cooldown: 165,
       doubleChance: 0.28,
       holdChance: 0.22,
-      slideChance: 0.24,
+      slideChance: 0.13,       // Lebih jarang agar tetap nyaman dimainkan
+      slideCooldownMs: 1500,   // Jeda minimal 1,5 detik antar slider
       beatThreshold: 130,
       missDamage: 12
     }
@@ -263,7 +267,7 @@ function updateTrialUI() {
   return true;
 }
 
-// --- 2. SERVER AUDIO MANAGER (HTML5 AUDIO + WEB AUDIO BUFFER AGAR LANGSUNG BUNYI) ---
+// --- 2. SERVER AUDIO MANAGER ---
 const serverAudioManager = {
   menuAudio: null,
   resultAudio: null,
@@ -287,14 +291,12 @@ const serverAudioManager = {
   async init() {
     const entries = Object.entries(APP_CONFIG.serverAudio.sfx);
 
-    // 1. Preload langsung via HTML5 Audio (agar langsung bunyi di sentuhan pertama)
     entries.forEach(([key, src]) => {
       const audio = new Audio(src);
       audio.preload = 'auto';
       this.sfxHtmlElements[key] = audio;
     });
 
-    // 2. Decode ke Web Audio Buffer untuk permainan ketukan ritme
     const ctx = this.ensureCtx();
     await Promise.all(entries.map(async ([key, src]) => {
       try {
@@ -414,7 +416,6 @@ const serverAudioManager = {
   playSfx(type) {
     if (!appState.sfxEnabled) return;
 
-    // 1. Jika buffer Web Audio siap & aktif, putar instan tanpa jeda
     const buffer = this.sfxBuffers[type];
     if (buffer && this.sharedCtx && this.sharedCtx.state === 'running') {
       const source = this.sharedCtx.createBufferSource();
@@ -427,18 +428,17 @@ const serverAudioManager = {
       return;
     }
 
-    // 2. Putar langsung dari elemen HTML5 Audio asli (tanpa cloneNode)
     const htmlEl = this.sfxHtmlElements[type];
     if (htmlEl) {
       htmlEl.pause();
       htmlEl.currentTime = 0;
       htmlEl.volume = type === 'scoreTick' ? 0.5 : 1.0;
       htmlEl.play().catch(() => {
-        // Jika diblokir autoplay, aktifkan AudioContext untuk klik berikutnya
         this.ensureCtx();
       });
     }
   }
+};
 
 const previewManager = {
   audioEl: null,
@@ -849,13 +849,14 @@ function renderLocalHistory() {
   });
 }
 
-// --- 5. MESIN GAME (SLIDE < < <  > > >, DIAGRAM BAR HORIZONTAL) ---
+// --- 5. MESIN GAME (ANTI-TUMPUK SLIDER & AUTO-PAUSE SAAT MINIMIZE/KELUAR) ---
 class RhythmEngine {
   constructor() {
     this.canvas = document.getElementById('gameCanvas');
     this.ctx = this.canvas.getContext('2d');
     this.isRunning = false;
     this.isPaused = false;
+    this.isCountingDown = false;
     this.animFrameId = null;
 
     this.audioCtx = null;
@@ -879,6 +880,7 @@ class RhythmEngine {
     this.activeKeys = new Set();
 
     this.lastSpawnTime = 0;
+    this.lastSlideSpawnTime = 0;
     this.lastFrameTime = 0;
     this.lastBassEnergy = 0;
     this.songDuration = 60;
@@ -926,23 +928,28 @@ class RhythmEngine {
           lane,
           startX: x,
           startY: y,
-          noteRef: hitNote
+          noteRef: hitNote,
+          slideTriggered: false
         });
       }
     });
 
+    // Satu gerakan geser hanya memicu 1 balok slide (tidak menghapus slider di atasnya)
     this.canvas.addEventListener('pointermove', (e) => {
       if (!this.isRunning || this.isPaused) return;
       const touchData = this.activeTouches.get(e.pointerId);
-      if (!touchData) return;
+      if (!touchData || touchData.slideTriggered) return;
 
       const rect = this.canvas.getBoundingClientRect();
       const currentX = e.clientX - rect.left;
       const currentY = e.clientY - rect.top;
       const distance = Math.hypot(currentX - touchData.startX, currentY - touchData.startY);
 
-      if (distance >= 22) {
-        this.handleSlideGesture(touchData.lane);
+      if (distance >= 26) {
+        const didHitSlide = this.handleSlideGesture(touchData.lane);
+        if (didHitSlide) {
+          touchData.slideTriggered = true;
+        }
         touchData.startX = currentX;
         touchData.startY = currentY;
       }
@@ -982,6 +989,7 @@ class RhythmEngine {
 
   runCountdown() {
     return new Promise((resolve) => {
+      this.isCountingDown = true;
       const overlay = document.getElementById('countdownOverlay');
       const textEl = document.getElementById('countdownText');
       const titleEl = document.getElementById('countdownSongTitle');
@@ -1011,6 +1019,7 @@ class RhythmEngine {
         } else {
           clearInterval(timer);
           overlay.classList.add('hidden');
+          this.isCountingDown = false;
           resolve();
         }
       }, 650);
@@ -1043,6 +1052,7 @@ class RhythmEngine {
     this.lostCount = 0;
     this.missCount = 0;
     this.lastSpawnTime = 0;
+    this.lastSlideSpawnTime = 0;
     this.lastBassEnergy = 0;
     this.beatPulse = 0;
 
@@ -1123,7 +1133,9 @@ class RhythmEngine {
     this.activeTouches.clear();
     this.activeKeys.clear();
     if (this.animFrameId) cancelAnimationFrame(this.animFrameId);
-    if (this.audioEl) this.audioEl.pause();
+    if (this.audioEl && !this.audioEl.paused) {
+      this.audioEl.pause();
+    }
     document.getElementById('pauseModal').classList.remove('hidden');
   }
 
@@ -1169,6 +1181,12 @@ class RhythmEngine {
       const lane1 = Math.floor(Math.random() * 4);
       const roll = Math.random();
 
+      // Cek apakah ada balok slide aktif yang masih di atas layar agar tidak pernah bertumpuk
+      const hasActiveSlide = this.notes.some((n) => n.type === 'slide' && !n.hit && n.y < this.hitLineY - 120);
+      const canSpawnSlide = levelCfg.slideChance > 0
+        && !hasActiveSlide
+        && (now - this.lastSlideSpawnTime >= levelCfg.slideCooldownMs);
+
       if (roll < levelCfg.holdChance) {
         const holdLength = 135 + Math.random() * 100;
         this.notes.push({
@@ -1181,7 +1199,7 @@ class RhythmEngine {
           tickAccum: 0
         });
         this.lastSpawnTime = now + (holdLength / levelCfg.speed) * 650;
-      } else if (levelCfg.slideChance > 0 && roll < levelCfg.holdChance + levelCfg.slideChance) {
+      } else if (canSpawnSlide && roll < levelCfg.holdChance + levelCfg.slideChance) {
         const startLane = Math.floor(Math.random() * 3);
         this.notes.push({
           type: 'slide',
@@ -1190,7 +1208,8 @@ class RhythmEngine {
           y: -35,
           hit: false
         });
-        this.lastSpawnTime = now;
+        this.lastSpawnTime = now + 180;
+        this.lastSlideSpawnTime = now;
       } else {
         this.notes.push({
           type: 'tap',
@@ -1260,43 +1279,52 @@ class RhythmEngine {
     return closestNote;
   }
 
+  // Hanya mengenai 1 balok slide paling bawah (paling dekat garis target)
   handleSlideGesture(startLane) {
     const offsetPixels = (appState.audioOffset / 1000) * APP_CONFIG.levels[appState.selectedLevel].speed;
     const targetY = this.hitLineY + offsetPixels;
+
+    let targetSlide = null;
+    let minDiff = Infinity;
 
     for (const note of this.notes) {
       if (note.type === 'slide' && !note.hit) {
         const laneMatch = startLane === -1 || startLane === note.lane || startLane === note.lane + 1 || note.touched;
         const diff = Math.abs(note.y - targetY);
 
-        if (laneMatch && diff <= 125) {
-          note.hit = true;
-          this.missStreak = 0;
-          this.laneFlashes[note.lane] = 1.0;
-          this.laneFlashes[note.lane + 1] = 1.0;
-
-          this.score += 130 + this.combo * 5;
-          this.combo++;
-          this.perfectStreak++;
-          this.perfectCount++;
-          this.life = Math.min(100, this.life + 3);
-
-          const isMilestone = this.perfectStreak >= 25 && this.perfectStreak % 25 === 0;
-          const label = isMilestone ? `PERFECT x${this.perfectStreak}` : 'SLIDE PERFECT!';
-          this.showFeedback(label, isMilestone ? 'anim-perfect-milestone' : 'anim-perfect');
-          serverAudioManager.playSfx('slide');
-
-          if (this.combo > this.maxCombo) this.maxCombo = this.combo;
-          this.comboPulse = 1.35;
-          this.spawnHitEffects(note.lane);
-          this.spawnHitEffects(note.lane + 1);
-          this.updateScoreHUD();
-          this.updateLifeUI();
-          if (navigator.vibrate) navigator.vibrate(20);
-          return;
+        if (laneMatch && diff <= 115 && diff < minDiff) {
+          minDiff = diff;
+          targetSlide = note;
         }
       }
     }
+
+    if (!targetSlide) return false;
+
+    targetSlide.hit = true;
+    this.missStreak = 0;
+    this.laneFlashes[targetSlide.lane] = 1.0;
+    this.laneFlashes[targetSlide.lane + 1] = 1.0;
+
+    this.score += 130 + this.combo * 5;
+    this.combo++;
+    this.perfectStreak++;
+    this.perfectCount++;
+    this.life = Math.min(100, this.life + 3);
+
+    const isMilestone = this.perfectStreak >= 25 && this.perfectStreak % 25 === 0;
+    const label = isMilestone ? `PERFECT x${this.perfectStreak}` : 'SLIDE PERFECT!';
+    this.showFeedback(label, isMilestone ? 'anim-perfect-milestone' : 'anim-perfect');
+    serverAudioManager.playSfx('slide');
+
+    if (this.combo > this.maxCombo) this.maxCombo = this.combo;
+    this.comboPulse = 1.35;
+    this.spawnHitEffects(targetSlide.lane);
+    this.spawnHitEffects(targetSlide.lane + 1);
+    this.updateScoreHUD();
+    this.updateLifeUI();
+    if (navigator.vibrate) navigator.vibrate(20);
+    return true;
   }
 
   handleLaneRelease(lane) {
@@ -1434,7 +1462,7 @@ class RhythmEngine {
   loop(timestamp) {
     if (!this.isRunning || this.isPaused) return;
 
-    const dt = (timestamp - this.lastFrameTime) / 1000;
+    const dt = Math.min(0.05, (timestamp - this.lastFrameTime) / 1000);
     this.lastFrameTime = timestamp;
 
     let elapsedSec = 0;
@@ -1896,6 +1924,7 @@ class RhythmEngine {
   stop() {
     this.isRunning = false;
     this.isPaused = false;
+    this.isCountingDown = false;
     this.activeTouches.clear();
     this.activeKeys.clear();
     if (this.animFrameId) cancelAnimationFrame(this.animFrameId);
@@ -1914,8 +1943,34 @@ class RhythmEngine {
   }
 }
 
-// --- 6. INTERAKSI UI MENU UTAMA, TUTORIAL & FULLSCREEN TOGGLE ---
+// --- 6. AUTO-PAUSE SAAT APLIKASI KELUAR / MINIMIZE & EVENT UI ---
 let rhythmEngine = null;
+
+function handleAppBackgrounded() {
+  if (rhythmEngine && rhythmEngine.isRunning && !rhythmEngine.isPaused) {
+    rhythmEngine.pause();
+  }
+  previewManager.stop();
+  serverAudioManager.stopMenuTheme();
+}
+
+document.addEventListener('visibilitychange', () => {
+  if (document.hidden) {
+    handleAppBackgrounded();
+  } else {
+    // Jika berada di menu utama dan kembali membuka aplikasi, lanjutkan musik menu
+    if (!document.body.classList.contains('in-game')) {
+      serverAudioManager.startMenuTheme();
+    }
+  }
+});
+
+window.addEventListener('pagehide', handleAppBackgrounded);
+window.addEventListener('blur', () => {
+  if (rhythmEngine && rhythmEngine.isRunning && !rhythmEngine.isPaused) {
+    rhythmEngine.pause();
+  }
+});
 
 function applyThemeColor(levelKey) {
   const color = APP_CONFIG.levels[levelKey].color;
@@ -1948,7 +2003,6 @@ function setupUIEvents() {
   window.addEventListener('pointerdown', unlockAudioSystem);
   window.addEventListener('keydown', unlockAudioSystem);
 
-  // Tampilkan Tutorial Otomatis saat pertama kali membuka aplikasi
   const tutorialSeen = localStorage.getItem(APP_CONFIG.storageKeyPrefix + 'tutorial_seen');
   if (tutorialSeen !== 'true') {
     openTutorialModal();
@@ -2156,7 +2210,7 @@ function setupUIEvents() {
   });
 }
 
-// --- 7. PWA SERVICE WORKER & INSTALL PROMPT (BANNER DEPAN + PENGATURAN) ---
+// --- 7. PWA SERVICE WORKER & INSTALL PROMPT ---
 let deferredPrompt;
 window.addEventListener('beforeinstallprompt', (e) => {
   e.preventDefault();
