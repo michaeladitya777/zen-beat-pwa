@@ -3,26 +3,32 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
-  <meta name="theme-color" content="#0b0d14" />
+  <meta name="theme-color" content="#090b12" />
   <title>ZenBeat — Game Musik Pelepas Penat</title>
   <link rel="manifest" href="manifest.json" />
   <link rel="stylesheet" href="style.css" />
 </head>
 <body>
   <div class="ambient-glow" id="ambientGlow"></div>
+  <div class="ambient-glow secondary"></div>
 
   <div class="app-container">
     <!-- Header & Status Trial -->
     <header class="app-header">
       <div class="brand">
         <div class="logo-row">
-          <span class="logo-icon">🎧</span>
-          <h1>Zen<span>Beat</span></h1>
+          <div class="logo-badge">🎧</div>
+          <div>
+            <h1>Zen<span>Beat</span></h1>
+            <p class="subtitle">Ketuk irama, buang penatmu</p>
+          </div>
         </div>
-        <p class="subtitle">Ketuk irama, buang penatmu</p>
       </div>
       <div class="header-actions">
-        <div id="trialBadge" class="trial-badge">Memuat status...</div>
+        <div class="top-pills">
+          <button id="bgmToggleBtn" class="btn-bgm" title="Musik Latar Menu">🎵 BGM: ON</button>
+          <div id="trialBadge" class="trial-badge">Memuat...</div>
+        </div>
         <button id="installBtn" class="btn-install hidden" title="Install Aplikasi">
           ⬇ Install App
         </button>
@@ -32,15 +38,15 @@
     <!-- Layar Menu Utama -->
     <main id="menuScreen" class="screen active">
       <!-- Bagian 1: Pilih Sumber Lagu -->
-      <section class="card song-section">
-        <div class="section-title">
-          <span class="step-num">1</span>
+      <section class="glass-panel song-section">
+        <div class="section-header">
+          <span class="step-pill">LANGKAH 1</span>
           <h2>Pilih Musik Pengusir Penat</h2>
         </div>
         
         <div class="song-tabs">
           <button class="tab-btn active" data-tab="builtin">🎶 Lagu Bawaan</button>
-          <button class="tab-btn" data-tab="local">📁 Lagu Sendiri (MP3)</button>
+          <button class="tab-btn" data-tab="local">📁 Lagu Sendiri</button>
         </div>
 
         <!-- Tab Lagu Bawaan -->
@@ -48,7 +54,7 @@
           <div class="song-list" id="builtinSongList">
             <div class="song-item selected" data-song="lofi-chill" data-bpm="95">
               <div class="song-left">
-                <div class="music-bars"><span></span><span></span><span></span></div>
+                <div class="song-art">🌧️</div>
                 <div class="song-info">
                   <strong>Hujan Sore di Kantor</strong>
                   <span>Lo-Fi Chill • 95 BPM</span>
@@ -59,7 +65,7 @@
 
             <div class="song-item" data-song="night-drive" data-bpm="115">
               <div class="song-left">
-                <div class="music-bars"><span></span><span></span><span></span></div>
+                <div class="song-art">🌃</div>
                 <div class="song-info">
                   <strong>Pulang Tenggo</strong>
                   <span>Synthwave • 115 BPM</span>
@@ -70,7 +76,7 @@
 
             <div class="song-item" data-song="coffee-rush" data-bpm="135">
               <div class="song-left">
-                <div class="music-bars"><span></span><span></span><span></span></div>
+                <div class="song-art">☕</div>
                 <div class="song-info">
                   <strong>Kopi Sachet Tengah Malam</strong>
                   <span>Upbeat Electronic • 135 BPM</span>
@@ -104,9 +110,9 @@
       </section>
 
       <!-- Bagian 2: Pilih Tingkat Kesulitan (4 Level) -->
-      <section class="card level-section">
-        <div class="section-title">
-          <span class="step-num">2</span>
+      <section class="glass-panel level-section">
+        <div class="section-header">
+          <span class="step-pill">LANGKAH 2</span>
           <h2>Pilih Tingkat Kewarasan</h2>
         </div>
         <div class="level-grid">
@@ -133,8 +139,8 @@
               <span class="level-tag">HARD</span>
               <span class="level-emoji">🔥</span>
             </div>
-            <h3>Mode Sistem Kebut Semalam (SKS)</h3>
-            <p>"Besok pagi dikumpulin, jempol jangan kendor!"</p>
+            <h3>Mode Kebut Semalam</h3>
+            <p>"Besok pagi dikumpulin, jangan kendor!"</p>
           </button>
 
           <button class="level-card extreme" data-level="extreme">
@@ -143,14 +149,14 @@
               <span class="level-emoji">⚡</span>
             </div>
             <h3>Mode WNI</h3>
-            <p>"Mental baja. Badai cobaan datang bersamaan!"</p>
+            <p>"Mental baja. Badai cobaan bersamaan!"</p>
           </button>
         </div>
       </section>
 
-      <!-- Tombol Mulai & Pengaturan Delay -->
+      <!-- Tombol Mulai & Pengaturan -->
       <div class="bottom-bar">
-        <button id="openSettingsBtn" class="btn-secondary">⚙️ Delay</button>
+        <button id="openSettingsBtn" class="btn-secondary">⚙️ Pengaturan</button>
         <button id="startGameBtn" class="btn-primary">MULAI MAIN ▶</button>
       </div>
     </main>
@@ -245,15 +251,49 @@
       </div>
     </div>
 
-    <!-- Modal Kalibrasi Delay -->
+    <!-- Modal Pengaturan (Delay + Sound Effect + Custom SFX Upload) -->
     <div id="settingsModal" class="modal hidden">
       <div class="modal-content">
-        <h3>Kalibrasi Sentuhan (Audio Offset)</h3>
-        <p>Geser jika ketukan terasa terlalu cepat atau lambat di HP kamu.</p>
+        <h3>⚙️ Pengaturan & Audio</h3>
+        
+        <!-- Opsi Aktif/Nonaktif Sound Effect -->
+        <div class="setting-row">
+          <div>
+            <strong>Sound Effect Ketukan (SFX)</strong>
+            <small>Matikan jika ingin fokus mendengar musik saja</small>
+          </div>
+          <label class="switch">
+            <input type="checkbox" id="sfxToggleCheckbox" checked />
+            <span class="slider-round"></span>
+          </label>
+        </div>
+
+        <!-- Upload Custom Sound Effect Sendiri -->
+        <div class="custom-sfx-box">
+          <span class="setting-sublabel">Upload Sound Effect Sendiri (Opsional)</span>
+          <div class="sfx-upload-grid">
+            <label for="customPerfectSfxInput" class="btn-sfx-upload">
+              <span>✨ SFX Perfect</span>
+              <small id="customPerfectName">Default</small>
+            </label>
+            <input type="file" id="customPerfectSfxInput" accept=".mp3,.wav,.ogg,.m4a" hidden />
+
+            <label for="customMissSfxInput" class="btn-sfx-upload">
+              <span>💥 SFX Miss</span>
+              <small id="customMissName">Default</small>
+            </label>
+            <input type="file" id="customMissSfxInput" accept=".mp3,.wav,.ogg,.m4a" hidden />
+          </div>
+          <button id="resetSfxBtn" class="btn-text-reset">Reset SFX ke Default</button>
+        </div>
+
+        <!-- Kalibrasi Delay -->
         <div class="slider-group">
+          <span class="setting-sublabel">Kalibrasi Delay Sentuhan (Audio Offset)</span>
           <input type="range" id="offsetSlider" min="-200" max="200" value="0" step="10" />
           <div class="slider-value"><span id="offsetValue">0</span> ms</div>
         </div>
+
         <div class="device-info">
           <small>Device ID: <code id="deviceIdDisplay">-</code></small>
         </div>
