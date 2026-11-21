@@ -16,6 +16,18 @@
   <div class="ambient-orb orb-2"></div>
 
   <div class="app-container">
+    <!-- Banner Install PWA di Paling Depan -->
+    <div id="frontInstallBanner" class="install-banner-3d hidden">
+      <div class="install-banner-left">
+        <div class="install-app-icon">Z</div>
+        <div>
+          <strong>Pasang Aplikasi ZenBeat</strong>
+          <span>Main layar penuh & lebih lancar tanpa browser</span>
+        </div>
+      </div>
+      <button id="frontInstallBtn" class="btn-install-now">Install</button>
+    </div>
+
     <!-- Header Menu Utama -->
     <header class="app-header">
       <div class="brand">
@@ -26,18 +38,19 @@
         </div>
       </div>
       <div class="header-actions">
+        <button id="openTutorialBtn" class="pill-3d btn-icon-pill" title="Cara Bermain">?</button>
         <button id="bgmToggleBtn" class="pill-3d btn-bgm" title="Musik Latar Menu">🎵 ON</button>
         <div id="trialBadge" class="pill-3d trial-badge">Memuat...</div>
       </div>
     </header>
 
-    <!-- Layar Menu Utama -->
+    <!-- Layar Menu Utama (Full Pilih Lagu Transparan) -->
     <main id="menuScreen" class="screen active">
-      <!-- Pilih Lagu -->
-      <section class="surface-3d">
+      <!-- Area Pilih Lagu Full & Tanpa Kotak/Border -->
+      <section class="song-section-transparent">
         <div class="section-header-clean">
-          <h2>1. Pilih Lagu</h2>
-          <span class="hint-badge">Klik lagu untuk unduh & preview</span>
+          <h2>Pilih Lagu</h2>
+          <span class="hint-badge">Ketuk lagu untuk memilih</span>
         </div>
 
         <div class="segmented-3d">
@@ -47,7 +60,7 @@
 
         <!-- Tab Lagu Server -->
         <div id="builtinTab" class="tab-content active">
-          <div id="builtinSongList" class="song-list">
+          <div id="builtinSongList" class="song-list-full">
             <div class="loading-songs">Memuat daftar lagu dari server...</div>
           </div>
         </div>
@@ -66,18 +79,23 @@
           <div id="localHistoryWrapper" class="local-history-wrapper hidden">
             <div class="history-header">
               <span>Riwayat Lagu & Skor Tertinggi</span>
-              <small>Klik untuk memilih</small>
+              <small>Ketuk untuk memilih</small>
             </div>
-            <div id="localHistoryList" class="history-list"></div>
+            <div id="localHistoryList" class="history-list-full"></div>
           </div>
         </div>
       </section>
 
-      <!-- Pilih Tingkat Kesulitan -->
-      <section class="surface-3d">
+      <!-- Bagian Tingkat Tantangan & Mulai Main (Muncul Setelah Lagu Dipilih) -->
+      <section id="levelActionSection" class="surface-3d level-reveal-box hidden">
         <div class="section-header-clean">
-          <h2>2. Tingkat Tantangan</h2>
+          <div>
+            <h2>Tingkat Tantangan</h2>
+            <small id="selectedSongCaption" class="selected-song-caption">Lagu terpilih: -</small>
+          </div>
+          <button id="unselectSongBtn" class="btn-close-level" title="Tutup">✕</button>
         </div>
+
         <div class="level-grid">
           <button class="level-btn-3d easy selected" data-level="easy">
             <div class="level-top">
@@ -115,18 +133,18 @@
             <p>Ujian mental penuh & combo brutal!</p>
           </button>
         </div>
+
+        <button id="startGameBtn" class="btn-3d btn-play full-width start-btn-spaced">▶ MULAI MAIN</button>
       </section>
 
-      <!-- Tombol Aksi Bawah -->
-      <div class="bottom-bar">
-        <button id="openSettingsBtn" class="btn-3d btn-sec">⚙️ Pengaturan</button>
-        <button id="startGameBtn" class="btn-3d btn-play">▶ MULAI MAIN</button>
+      <!-- Tombol Pengaturan Menyatu di Bagian Bawah -->
+      <div class="bottom-settings-merged">
+        <button id="openSettingsBtn" class="btn-settings-merged">⚙️ Pengaturan & Kalibrasi Audio</button>
       </div>
     </main>
 
     <!-- Layar Permainan Full Screen Transparan -->
     <section id="gameScreen" class="screen">
-      <!-- HUD Transparan Tanpa Kotak & Tanpa Judul -->
       <div class="game-hud-clean">
         <div class="hud-top-row">
           <div class="hud-spacer"></div>
@@ -150,7 +168,6 @@
         </div>
       </div>
 
-      <!-- Area Arena Canvas -->
       <div class="canvas-wrapper">
         <canvas id="gameCanvas"></canvas>
 
@@ -169,6 +186,28 @@
     </section>
   </div>
 
+  <!-- Modal Tutorial Awal Pertama Kali Buka -->
+  <div id="tutorialModal" class="modal hidden">
+    <div class="modal-surface-3d tutorial-box">
+      <div class="tutorial-step-badge" id="tutorialStepBadge">Langkah 1 dari 4</div>
+      <div class="tutorial-visual" id="tutorialVisual">🎵</div>
+      <h3 id="tutorialTitle">Pilih Lagu Favoritmu</h3>
+      <p id="tutorialDesc">Pilih lagu bawaan dari server atau unggah file MP3/WAV milikmu sendiri dari perangkat.</p>
+
+      <div class="tutorial-dots">
+        <span class="t-dot active"></span>
+        <span class="t-dot"></span>
+        <span class="t-dot"></span>
+        <span class="t-dot"></span>
+      </div>
+
+      <div class="tutorial-actions">
+        <button id="skipTutorialBtn" class="btn-3d btn-sec">Lewati</button>
+        <button id="nextTutorialBtn" class="btn-3d btn-play">Lanjut ▶</button>
+      </div>
+    </div>
+  </div>
+
   <!-- Modal Pause -->
   <div id="pauseModal" class="modal hidden">
     <div class="modal-surface-3d pause-box">
@@ -180,7 +219,7 @@
     </div>
   </div>
 
-  <!-- Modal Penilaian Tanpa Kotak-Kotak + Grade Bar -->
+  <!-- Modal Penilaian Tanpa Kotak + Grade Bar + Diagram Bar Horizontal -->
   <div id="resultModal" class="modal hidden">
     <div class="modal-surface-3d result-box-clean">
       <div class="result-top-row">
@@ -224,23 +263,46 @@
         </div>
       </div>
 
-      <!-- Rincian Ketukan Tanpa Kotak -->
-      <div class="result-clean-judgements">
-        <div class="clean-judge-item">
-          <small class="text-cyan">PERFECT</small>
-          <strong id="finalPerfect">0</strong>
+      <!-- Grafik Diagram Bar Horizontal Kiri ke Kanan -->
+      <div class="judge-chart-list">
+        <div class="judge-bar-row">
+          <div class="judge-bar-header">
+            <span class="text-cyan">PERFECT</span>
+            <strong id="finalPerfect">0</strong>
+          </div>
+          <div class="judge-bar-track">
+            <div id="barPerfect" class="judge-bar-fill fill-cyan"></div>
+          </div>
         </div>
-        <div class="clean-judge-item">
-          <small class="text-green">GOOD</small>
-          <strong id="finalGood">0</strong>
+
+        <div class="judge-bar-row">
+          <div class="judge-bar-header">
+            <span class="text-green">GOOD</span>
+            <strong id="finalGood">0</strong>
+          </div>
+          <div class="judge-bar-track">
+            <div id="barGood" class="judge-bar-fill fill-green"></div>
+          </div>
         </div>
-        <div class="clean-judge-item">
-          <small class="text-pink">BAD / LOST</small>
-          <strong id="finalBad">0</strong>
+
+        <div class="judge-bar-row">
+          <div class="judge-bar-header">
+            <span class="text-pink">BAD / LOST</span>
+            <strong id="finalBad">0</strong>
+          </div>
+          <div class="judge-bar-track">
+            <div id="barBad" class="judge-bar-fill fill-pink"></div>
+          </div>
         </div>
-        <div class="clean-judge-item">
-          <small class="text-rose">MISS</small>
-          <strong id="finalMiss">0</strong>
+
+        <div class="judge-bar-row">
+          <div class="judge-bar-header">
+            <span class="text-rose">MISS</span>
+            <strong id="finalMiss">0</strong>
+          </div>
+          <div class="judge-bar-track">
+            <div id="barMiss" class="judge-bar-fill fill-rose"></div>
+          </div>
         </div>
       </div>
 
@@ -258,8 +320,8 @@
 
       <div class="setting-row-3d">
         <div>
-          <strong>Efek Suara Ketukan (SFX)</strong>
-          <small>Bunyi klik saat menyentuh balok nada</small>
+          <strong>Efek Suara (SFX)</strong>
+          <small>Bunyi klik tombol menu & ketukan nada</small>
         </div>
         <label class="switch">
           <input type="checkbox" id="sfxToggleCheckbox" checked />
