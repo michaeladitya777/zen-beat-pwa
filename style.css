@@ -6,7 +6,6 @@
   --text-muted: #94a3b8;
   --border-color: rgba(255, 255, 255, 0.08);
 
-  /* Warna 4 Level */
   --color-easy: #38bdf8;
   --color-normal: #34d399;
   --color-hard: #fb923c;
@@ -33,7 +32,6 @@ body {
   position: relative;
 }
 
-/* Cahaya Latar Dinamis */
 .ambient-glow {
   position: fixed;
   top: -120px;
@@ -249,7 +247,6 @@ body {
   gap: 11px;
 }
 
-/* Animasi Equalizer Mini */
 .music-bars {
   display: flex;
   align-items: flex-end;
@@ -309,36 +306,129 @@ body {
   font-weight: 800;
 }
 
-/* Upload Local Box */
+/* Upload Local Box (Rapi & Horizontal) */
 .upload-box {
   display: flex;
-  flex-direction: column;
   align-items: center;
-  text-align: center;
-  gap: 6px;
-  padding: 22px 12px;
-  border: 1.5px dashed rgba(255, 255, 255, 0.18);
+  gap: 12px;
+  padding: 14px;
+  border: 1.5px dashed rgba(255, 255, 255, 0.2);
   border-radius: 14px;
-  background: rgba(11, 13, 20, 0.55);
+  background: rgba(11, 13, 20, 0.6);
   cursor: pointer;
   transition: 0.2s;
 }
 
-.upload-box:hover {
+.upload-box:hover, .upload-box.has-file {
   border-color: var(--active-theme);
+  background: rgba(56, 189, 248, 0.06);
 }
 
 .upload-icon {
-  font-size: 1.8rem;
+  font-size: 1.6rem;
+  flex-shrink: 0;
 }
 
-.upload-box strong {
-  font-size: 0.85rem;
+.upload-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  overflow: hidden;
 }
 
-.upload-box span {
-  font-size: 0.72rem;
+.upload-text strong {
+  font-size: 0.84rem;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.upload-text span {
+  font-size: 0.7rem;
   color: var(--text-muted);
+}
+
+/* Kolom Riwayat Lagu Lokal & High Score */
+.local-history-wrapper {
+  margin-top: 12px;
+  border-top: 1px solid var(--border-color);
+  padding-top: 10px;
+}
+
+.history-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 8px;
+}
+
+.history-header span {
+  font-size: 0.76rem;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+.history-header small {
+  font-size: 0.66rem;
+  color: var(--text-muted);
+}
+
+.history-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-height: 145px;
+  overflow-y: auto;
+}
+
+.history-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 9px 11px;
+  border-radius: 10px;
+  background: rgba(11, 13, 20, 0.65);
+  border: 1px solid var(--border-color);
+  cursor: pointer;
+  transition: 0.15s;
+}
+
+.history-item:hover {
+  border-color: var(--active-theme);
+}
+
+.history-left {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  max-width: 65%;
+}
+
+.history-left strong {
+  font-size: 0.8rem;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.history-mode-tag {
+  font-size: 0.66rem;
+  font-weight: 700;
+}
+
+.history-right {
+  text-align: right;
+}
+
+.history-right small {
+  display: block;
+  font-size: 0.62rem;
+  color: var(--text-muted);
+}
+
+.history-right strong {
+  font-size: 0.86rem;
+  color: var(--color-easy);
 }
 
 /* 4 Level Grid */
@@ -392,7 +482,6 @@ body {
   line-height: 1.35;
 }
 
-/* Warna Aktif Tiap Level */
 .level-card.easy .level-tag { color: var(--color-easy); }
 .level-card.easy.selected {
   border-color: var(--color-easy);
@@ -465,7 +554,7 @@ body {
   display: block;
 }
 
-/* Game Screen & Canvas */
+/* Game Screen, Life Bar & Canvas */
 .game-hud {
   display: flex;
   justify-content: space-between;
@@ -523,10 +612,66 @@ body {
   font-weight: 900;
 }
 
+.bars-container {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  background: var(--bg-card);
+  padding: 8px 12px;
+  border-radius: 12px;
+  border: 1px solid var(--border-color);
+}
+
+.life-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.life-label {
+  font-size: 0.66rem;
+  font-weight: 800;
+  color: #f43f5e;
+  letter-spacing: 0.5px;
+}
+
+.life-track {
+  flex: 1;
+  height: 8px;
+  background: rgba(255, 255, 255, 0.08);
+  border-radius: 999px;
+  overflow: hidden;
+}
+
+.life-fill {
+  width: 100%;
+  height: 100%;
+  background: linear-gradient(90deg, #34d399, #38bdf8);
+  border-radius: 999px;
+  transition: width 0.15s ease-out, background 0.2s;
+}
+
+.life-fill.danger {
+  background: linear-gradient(90deg, #f43f5e, #fb923c);
+  animation: dangerBlink 0.5s infinite alternate;
+}
+
+@keyframes dangerBlink {
+  from { opacity: 0.65; }
+  to { opacity: 1; }
+}
+
+.life-pct {
+  font-size: 0.7rem;
+  font-weight: 800;
+  min-width: 34px;
+  text-align: right;
+}
+
 .progress-track {
   width: 100%;
   height: 4px;
-  background: rgba(255, 255, 255, 0.08);
+  background: rgba(255, 255, 255, 0.06);
   border-radius: 999px;
   overflow: hidden;
 }
@@ -534,14 +679,14 @@ body {
 .progress-fill {
   width: 0%;
   height: 100%;
-  background: linear-gradient(90deg, #38bdf8, #34d399);
+  background: rgba(255, 255, 255, 0.45);
   transition: width 0.1s linear;
 }
 
 .canvas-wrapper {
   position: relative;
-  height: 75vh;
-  min-height: 460px;
+  height: 72vh;
+  min-height: 440px;
   background: radial-gradient(circle at 50% 85%, #161b2c 0%, #090b10 100%);
   border-radius: 20px;
   border: 1.5px solid var(--border-color);
@@ -582,23 +727,41 @@ body {
   100% { transform: scale(1); opacity: 1; }
 }
 
+/* Feedback Teks Melayang (Lebih Dinamis & Tidak Kaku) */
 .hit-feedback {
   position: absolute;
-  top: 44%;
+  top: 46%;
   left: 50%;
-  transform: translate(-50%, -50%);
-  font-size: 1.45rem;
+  transform: translate(-50%, -50%) scale(0.8);
+  font-size: 1.5rem;
   font-weight: 900;
-  letter-spacing: 1.2px;
+  letter-spacing: 1px;
   pointer-events: none;
   opacity: 0;
-  transition: opacity 0.14s ease-out, transform 0.14s ease-out;
-  text-shadow: 0 4px 16px rgba(0, 0, 0, 0.9);
+  text-shadow: 0 4px 18px rgba(0, 0, 0, 0.95);
+  z-index: 5;
 }
 
 .hit-feedback.show {
-  opacity: 1;
-  transform: translate(-50%, -68%) scale(1.1);
+  animation: popFeedback 0.34s cubic-bezier(0.18, 0.89, 0.32, 1.28) forwards;
+}
+
+.hit-feedback.miss-anim {
+  animation: shakeMiss 0.36s ease-out forwards;
+}
+
+@keyframes popFeedback {
+  0% { opacity: 0; transform: translate(-50%, -40%) scale(0.75); }
+  50% { opacity: 1; transform: translate(-50%, -68%) scale(1.15); }
+  100% { opacity: 0; transform: translate(-50%, -82%) scale(1); }
+}
+
+@keyframes shakeMiss {
+  0% { opacity: 1; transform: translate(-50%, -50%) rotate(0deg); }
+  25% { opacity: 1; transform: translate(-56%, -52%) rotate(-5deg); }
+  50% { opacity: 1; transform: translate(-44%, -54%) rotate(5deg); }
+  75% { opacity: 1; transform: translate(-52%, -56%) rotate(-3deg); }
+  100% { opacity: 0; transform: translate(-50%, -64%) rotate(0deg); }
 }
 
 /* Result Modal */
@@ -619,6 +782,13 @@ body {
   align-items: center;
   justify-content: center;
   box-shadow: 0 0 28px rgba(56, 189, 248, 0.4);
+}
+
+.result-rank.gameover {
+  background: linear-gradient(135deg, #f43f5e, #fb923c);
+  color: #ffffff;
+  font-size: 1.8rem;
+  box-shadow: 0 0 28px rgba(244, 63, 94, 0.45);
 }
 
 .stats-grid {
