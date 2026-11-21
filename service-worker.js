@@ -1,4 +1,4 @@
-const CACHE_NAME = 'zenbeat-core-v16';
+const CACHE_NAME = 'zenbeat-core-v17';
 
 // Hanya file inti aplikasi yang di-cache di awal
 const CORE_ASSETS = [
