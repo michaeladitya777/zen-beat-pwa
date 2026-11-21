@@ -10,7 +10,8 @@ const APP_CONFIG = {
       speed: 280,
       cooldown: 640,
       doubleChance: 0,
-      beatThreshold: 175
+      beatThreshold: 175,
+      missDamage: 7
     },
     normal: {
       name: 'Mode Biasa Aja',
@@ -19,7 +20,8 @@ const APP_CONFIG = {
       speed: 390,
       cooldown: 420,
       doubleChance: 0.06,
-      beatThreshold: 160
+      beatThreshold: 160,
+      missDamage: 9
     },
     hard: {
       name: 'Mode Sistem Kebut Semalam (SKS)',
@@ -28,7 +30,8 @@ const APP_CONFIG = {
       speed: 520,
       cooldown: 235,
       doubleChance: 0.16,
-      beatThreshold: 145
+      beatThreshold: 145,
+      missDamage: 10
     },
     extreme: {
       name: 'Mode WNI',
@@ -37,7 +40,8 @@ const APP_CONFIG = {
       speed: 660,
       cooldown: 145,
       doubleChance: 0.35,
-      beatThreshold: 132
+      beatThreshold: 132,
+      missDamage: 12
     }
   }
 };
@@ -56,7 +60,7 @@ const appState = {
   audioOffset: 0
 };
 
-// --- 1. SISTEM PENYIMPANAN GANDA (localStorage + IndexedDB) ---
+// --- 1. SISTEM PENYIMPANAN GANDA & RIWAYAT SKOR ---
 function openLicenseDB() {
   return new Promise((resolve, reject) => {
     const request = indexedDB.open('ZenBeatLicenseDB', 1);
@@ -139,6 +143,7 @@ async function initTrialAndDevice() {
   document.getElementById('paywallDeviceId').textContent = deviceId;
 
   updateTrialUI();
+  renderLocalHistory();
 }
 
 function updateTrialUI() {
@@ -166,7 +171,83 @@ function updateTrialUI() {
   return true;
 }
 
-// --- 2. MESIN GAME & JUICY VISUAL ENGINE ---
+// Manajemen Riwayat & Highest Score Lagu Lokal
+function getLocalHistory() {
+  try {
+    return JSON.parse(localStorage.getItem(APP_CONFIG.storageKeyPrefix + 'local_history')) || [];
+  } catch {
+    return [];
+  }
+}
+
+function saveLocalSongRecord(title, levelKey, newScore) {
+  const history = getLocalHistory();
+  const existingIdx = history.findIndex((item) => item.title === title);
+  let highScore = newScore;
+
+  if (existingIdx !== -1) {
+    highScore = Math.max(history[existingIdx].highScore, newScore);
+    history.splice(existingIdx, 1);
+  }
+
+  history.unshift({
+    title,
+    levelKey,
+    highScore,
+    updatedAt: Date.now()
+  });
+
+  // Simpan maksimal 15 riwayat lagu lokal terakhir
+  localStorage.setItem(APP_CONFIG.storageKeyPrefix + 'local_history', JSON.stringify(history.slice(0, 15)));
+  renderLocalHistory();
+  return highScore;
+}
+
+function renderLocalHistory() {
+  const history = getLocalHistory();
+  const wrapper = document.getElementById('localHistoryWrapper');
+  const listEl = document.getElementById('localHistoryList');
+
+  if (history.length === 0) {
+    wrapper.classList.add('hidden');
+    return;
+  }
+
+  wrapper.classList.remove('hidden');
+  listEl.innerHTML = '';
+
+  history.forEach((item) => {
+    const lvl = APP_CONFIG.levels[item.levelKey] || APP_CONFIG.levels.easy;
+    const div = document.createElement('div');
+    div.className = 'history-item';
+    div.innerHTML = `
+      <div class="history-left">
+        <strong>🎵 ${item.title}</strong>
+        <span class="history-mode-tag" style="color: ${lvl.color}">${lvl.name}</span>
+      </div>
+      <div class="history-right">
+        <small>HIGHEST SCORE</small>
+        <strong>${item.highScore.toLocaleString('id-ID')}</strong>
+      </div>
+    `;
+
+    // Klik riwayat untuk langsung memilih mode levelnya & memicu pemilih file
+    div.addEventListener('click', () => {
+      document.querySelectorAll('.level-card').forEach((c) => c.classList.remove('selected'));
+      const targetCard = document.querySelector(`.level-card[data-level="${item.levelKey}"]`);
+      if (targetCard) {
+        targetCard.classList.add('selected');
+        appState.selectedLevel = item.levelKey;
+        applyThemeColor(item.levelKey);
+      }
+      document.getElementById('audioFileInput').click();
+    });
+
+    listEl.appendChild(div);
+  });
+}
+
+// --- 2. MESIN GAME, LIFE BAR & JUICY VISUAL ENGINE ---
 class RhythmEngine {
   constructor() {
     this.canvas = document.getElementById('gameCanvas');
@@ -199,9 +280,11 @@ class RhythmEngine {
     this.songStartTime = 0;
     this.songDuration = 45;
 
-    // Skor
+    // Skor, Nyawa (Life Bar) & Combo
+    this.life = 100;
     this.score = 0;
     this.combo = 0;
+    this.missStreak = 0;
     this.maxCombo = 0;
     this.perfectCount = 0;
     this.goodCount = 0;
@@ -278,17 +361,20 @@ class RhythmEngine {
     this.shockwaves = [];
     this.laneFlashes = [0, 0, 0, 0];
     this.padPressScale = [1, 1, 1, 1];
+    this.life = 100;
     this.score = 0;
     this.combo = 0;
+    this.missStreak = 0;
     this.maxCombo = 0;
     this.perfectCount = 0;
     this.goodCount = 0;
     this.missCount = 0;
     this.lastSpawnTime = 0;
     this.lastEnergy = 0;
-    this.updateScoreHUD();
 
-    // Gambar arena awal sebelum countdown selesai
+    this.updateScoreHUD();
+    this.updateLifeUI();
+
     this.draw();
     await this.runCountdown();
 
@@ -322,7 +408,7 @@ class RhythmEngine {
     source.connect(this.analyser);
     this.analyser.connect(this.audioCtx.destination);
 
-    this.audioEl.addEventListener('ended', () => this.finishGame());
+    this.audioEl.addEventListener('ended', () => this.finishGame(false));
     await this.audioEl.play();
     this.songDuration = this.audioEl.duration || 120;
   }
@@ -359,7 +445,6 @@ class RhythmEngine {
       const now = this.audioCtx.currentTime;
       const chord = chords[Math.floor(step / 4) % chords.length];
 
-      // Gerakkan bar visualizer latar belakang
       for (let i = 0; i < this.visualizerBars.length; i++) {
         this.visualizerBars[i] = 25 + Math.random() * 85;
       }
@@ -448,7 +533,6 @@ class RhythmEngine {
       }
       const bassAvg = bassSum / 10;
 
-      // Update visualizer bars dari frekuensi asli lagu MP3
       for (let i = 0; i < this.visualizerBars.length; i++) {
         this.visualizerBars[i] = (this.dataArray[i * 2] || 0) * 0.65;
       }
@@ -473,7 +557,7 @@ class RhythmEngine {
 
   handleLaneHit(lane) {
     this.laneFlashes[lane] = 1.0;
-    this.padPressScale[lane] = 0.86; // Efek tombol tuts membal ke dalam
+    this.padPressScale[lane] = 0.86;
 
     const offsetPixels = (appState.audioOffset / 1000) * APP_CONFIG.levels[appState.selectedLevel].speed;
     const targetY = this.hitLineY + offsetPixels;
@@ -491,45 +575,54 @@ class RhythmEngine {
       }
     }
 
-    if (closestNote && minDiff <= 90) {
+    if (closestNote && minDiff <= 92) {
       closestNote.hit = true;
+      this.missStreak = 0; // Reset combo miss saat berhasil ketuk
       const levelColor = APP_CONFIG.levels[appState.selectedLevel].color;
 
-      if (minDiff <= 42) {
+      if (minDiff <= 44) {
         this.score += 100 + this.combo * 5;
         this.combo++;
         this.perfectCount++;
-        this.showFeedback('PERFECT!', levelColor);
+
+        // Perfect & kelipatan Combo menambah Life Bar
+        let heal = 2;
+        if (this.combo % 10 === 0) heal += 5;
+        this.life = Math.min(100, this.life + heal);
+
+        this.showFeedback('PERFECT!', levelColor, false);
         this.playTapClick(true);
         this.shakeIntensity = appState.selectedLevel === 'extreme' ? 4.5 : 2;
-        if (navigator.vibrate) navigator.vibrate(15); // Haptic getar ringan di HP
+        if (navigator.vibrate) navigator.vibrate(15);
       } else {
         this.score += 50 + this.combo * 2;
         this.combo++;
         this.goodCount++;
-        this.showFeedback('GOOD', '#cbd5e1');
+
+        // Kelipatan 10 combo tetap memberi sedikit pemulihan nyawa
+        if (this.combo % 10 === 0) {
+          this.life = Math.min(100, this.life + 3);
+        }
+
+        this.showFeedback('GOOD', '#cbd5e1', false);
         this.playTapClick(false);
       }
 
       if (this.combo > this.maxCombo) this.maxCombo = this.combo;
-      this.comboPulse = 1.32;
+      this.comboPulse = 1.35;
       this.spawnHitEffects(lane);
       this.updateScoreHUD();
+      this.updateLifeUI();
     }
   }
 
-  showFeedback(text, color) {
+  showFeedback(text, color, isMiss = false) {
     const el = document.getElementById('hitFeedback');
     el.textContent = text;
     el.style.color = color;
-    el.classList.remove('show');
+    el.classList.remove('show', 'miss-anim');
     void el.offsetWidth;
-    el.classList.add('show');
-
-    clearTimeout(this.feedbackTimer);
-    this.feedbackTimer = setTimeout(() => {
-      el.classList.remove('show');
-    }, 260);
+    el.classList.add(isMiss ? 'miss-anim' : 'show');
   }
 
   spawnHitEffects(lane) {
@@ -537,7 +630,6 @@ class RhythmEngine {
     const cx = lane * laneW + laneW / 2;
     const levelColor = APP_CONFIG.levels[appState.selectedLevel].color;
 
-    // Cincin gelombang cahaya (Shockwave)
     this.shockwaves.push({
       x: cx,
       y: this.hitLineY,
@@ -546,7 +638,6 @@ class RhythmEngine {
       color: levelColor
     });
 
-    // Percikan partikel
     for (let i = 0; i < 10; i++) {
       this.particles.push({
         x: cx,
@@ -562,6 +653,23 @@ class RhythmEngine {
 
   updateScoreHUD() {
     document.getElementById('scoreDisplay').textContent = this.score;
+  }
+
+  updateLifeUI() {
+    const fillEl = document.getElementById('lifeBarFill');
+    const textEl = document.getElementById('lifePercentText');
+    const clamped = Math.max(0, Math.round(this.life));
+
+    fillEl.style.width = `${clamped}%`;
+    textEl.textContent = `${clamped}%`;
+
+    if (clamped <= 30) {
+      fillEl.classList.add('danger');
+      textEl.style.color = '#f43f5e';
+    } else {
+      fillEl.classList.remove('danger');
+      textEl.style.color = '#f8fafc';
+    }
   }
 
   loop(timestamp) {
@@ -581,7 +689,7 @@ class RhythmEngine {
     document.getElementById('songProgressBar').style.width = `${progressPct}%`;
 
     if (elapsedSec >= this.songDuration) {
-      this.finishGame();
+      this.finishGame(false);
       return;
     }
 
@@ -590,16 +698,31 @@ class RhythmEngine {
     }
 
     // Update Posisi Balok
-    const speed = APP_CONFIG.levels[appState.selectedLevel].speed;
+    const levelCfg = APP_CONFIG.levels[appState.selectedLevel];
     for (const note of this.notes) {
       if (!note.hit) {
-        note.y += speed * dt;
+        note.y += levelCfg.speed * dt;
         if (note.y > this.height + 24) {
           note.hit = true;
           this.combo = 0;
           this.missCount++;
-          this.showFeedback('MISS', '#f43f5e');
+          this.missStreak++;
+          this.comboPulse = 1.25;
+          this.shakeIntensity = 5;
+
+          // Kurangi Life Bar saat Miss
+          this.life = Math.max(0, this.life - levelCfg.missDamage);
+          this.updateLifeUI();
+
+          const missLabel = this.missStreak > 1 ? `MISS x${this.missStreak}!` : 'MISS!';
+          this.showFeedback(missLabel, '#f43f5e', true);
           this.updateScoreHUD();
+
+          // Cek apakah Life Bar habis (Game Over)
+          if (this.life <= 0) {
+            this.finishGame(true);
+            return;
+          }
         }
       }
     }
@@ -643,7 +766,6 @@ class RhythmEngine {
     const levelRgb = levelCfg.rgb;
 
     ctx.save();
-    // Efek getar layar halus (Screen Shake)
     if (this.shakeIntensity > 0.1) {
       const dx = (Math.random() - 0.5) * this.shakeIntensity;
       const dy = (Math.random() - 0.5) * this.shakeIntensity;
@@ -657,22 +779,46 @@ class RhythmEngine {
     const barW = this.width / barCount;
     for (let i = 0; i < barCount; i++) {
       const barH = this.visualizerBars[i] * 1.4;
-      ctx.fillStyle = `rgba(${levelRgb}, 0.07)`;
+      ctx.fillStyle = `rgba(${levelRgb}, 0.08)`;
       ctx.fillRect(i * barW + 2, this.hitLineY - barH, barW - 4, barH);
     }
 
-    // 2. Angka Combo Besar di Tengah Latar Belakang
+    // 2. Angka Combo / Miss Streak Besar & Tegas di Tengah Latar Belakang
     if (this.combo > 1) {
       ctx.save();
-      ctx.translate(this.width / 2, this.height * 0.34);
+      ctx.translate(this.width / 2, this.height * 0.33);
       ctx.scale(this.comboPulse, this.comboPulse);
-      ctx.fillStyle = `rgba(${levelRgb}, 0.18)`;
-      ctx.font = '900 76px sans-serif';
+
+      ctx.font = '900 84px sans-serif';
       ctx.textAlign = 'center';
+      ctx.strokeStyle = `rgba(${levelRgb}, 0.55)`;
+      ctx.lineWidth = 3;
+      ctx.strokeText(`${this.combo}`, 0, 0);
+
+      ctx.fillStyle = `rgba(${levelRgb}, 0.34)`;
       ctx.fillText(`${this.combo}`, 0, 0);
 
-      ctx.font = '800 14px sans-serif';
-      ctx.fillText('COMBO', 0, 22);
+      ctx.font = '900 15px sans-serif';
+      ctx.fillStyle = `rgba(255, 255, 255, 0.45)`;
+      ctx.fillText('COMBO', 0, 24);
+      ctx.restore();
+    } else if (this.missStreak > 1) {
+      ctx.save();
+      ctx.translate(this.width / 2, this.height * 0.33);
+      ctx.scale(this.comboPulse, this.comboPulse);
+
+      ctx.font = '900 72px sans-serif';
+      ctx.textAlign = 'center';
+      ctx.strokeStyle = 'rgba(244, 63, 94, 0.6)';
+      ctx.lineWidth = 3;
+      ctx.strokeText(`${this.missStreak}x`, 0, 0);
+
+      ctx.fillStyle = 'rgba(244, 63, 94, 0.32)';
+      ctx.fillText(`${this.missStreak}x`, 0, 0);
+
+      ctx.font = '900 14px sans-serif';
+      ctx.fillStyle = 'rgba(244, 63, 94, 0.65)';
+      ctx.fillText('MISS STREAK', 0, 22);
       ctx.restore();
     }
 
@@ -716,7 +862,6 @@ class RhythmEngine {
       ctx.translate(cx, cy);
       ctx.scale(this.padPressScale[i], this.padPressScale[i]);
 
-      // Kotak tuts instrumen
       ctx.fillStyle = this.laneFlashes[i] > 0.15
         ? `rgba(${levelRgb}, 0.35)`
         : 'rgba(255, 255, 255, 0.04)';
@@ -730,7 +875,6 @@ class RhythmEngine {
       ctx.fill();
       ctx.stroke();
 
-      // Huruf shortcut tipis
       ctx.fillStyle = 'rgba(255, 255, 255, 0.25)';
       ctx.font = 'bold 12px sans-serif';
       ctx.textAlign = 'center';
@@ -744,14 +888,12 @@ class RhythmEngine {
       const w = laneW - 18;
       const h = 30;
 
-      // Jejak ekor cahaya (Trail)
       const trailGrad = ctx.createLinearGradient(0, note.y - 75, 0, note.y);
       trailGrad.addColorStop(0, `rgba(${levelRgb}, 0)`);
       trailGrad.addColorStop(1, `rgba(${levelRgb}, 0.28)`);
       ctx.fillStyle = trailGrad;
       ctx.fillRect(x + 4, note.y - 75, w - 8, 75);
 
-      // Badan Balok Utama
       ctx.fillStyle = levelColor;
       ctx.shadowColor = levelColor;
       ctx.shadowBlur = 14;
@@ -761,7 +903,6 @@ class RhythmEngine {
       ctx.fill();
       ctx.shadowBlur = 0;
 
-      // Garis kilau putih di tengah balok
       ctx.fillStyle = 'rgba(255, 255, 255, 0.65)';
       ctx.beginPath();
       ctx.roundRect(x + 8, note.y - 3, w - 16, 6, 3);
@@ -789,28 +930,54 @@ class RhythmEngine {
     ctx.restore();
   }
 
-  finishGame() {
+  finishGame(isGameOver = false) {
     this.stop();
 
-    const totalNotes = this.perfectCount + this.goodCount + this.missCount;
-    const accuracy = totalNotes > 0 ? ((this.perfectCount + this.goodCount * 0.7) / totalNotes) * 100 : 100;
-
-    let rank = 'C';
-    let title = 'Lumayan Buat Lemesin Jari!';
-    if (accuracy >= 90) {
-      rank = 'S';
-      title = 'Luar Biasa! Stres Auto Hilang!';
-    } else if (accuracy >= 75) {
-      rank = 'A';
-      title = 'Mantap! Ritmemu Stabil!';
-    } else if (accuracy >= 55) {
-      rank = 'B';
-      title = 'Cukup Santuy, Coba Lagi Yuk!';
+    // Simpan Highest Score (baik untuk lagu lokal maupun bawaan)
+    let highScore = this.score;
+    if (appState.selectedSource === 'local') {
+      highScore = saveLocalSongRecord(appState.selectedSongTitle, appState.selectedLevel, this.score);
+    } else {
+      const key = `builtin_hs_${appState.selectedSongId}`;
+      const prev = Number(localStorage.getItem(APP_CONFIG.storageKeyPrefix + key) || 0);
+      highScore = Math.max(prev, this.score);
+      localStorage.setItem(APP_CONFIG.storageKeyPrefix + key, String(highScore));
     }
 
-    document.getElementById('resultRank').textContent = rank;
-    document.getElementById('resultTitle').textContent = title;
-    document.getElementById('finalScore').textContent = this.score;
+    const rankEl = document.getElementById('resultRank');
+    const titleEl = document.getElementById('resultTitle');
+    const subEl = document.getElementById('resultSubtitle');
+
+    if (isGameOver) {
+      rankEl.textContent = '💀';
+      rankEl.classList.add('gameover');
+      titleEl.textContent = 'Nyawa Habis (Game Over)!';
+      subEl.textContent = 'Cobaan terlalu deras, tarik napas dulu lalu coba lagi!';
+    } else {
+      rankEl.classList.remove('gameover');
+      const totalNotes = this.perfectCount + this.goodCount + this.missCount;
+      const accuracy = totalNotes > 0 ? ((this.perfectCount + this.goodCount * 0.7) / totalNotes) * 100 : 100;
+
+      let rank = 'C';
+      let title = 'Lumayan Buat Lemesin Jari!';
+      if (accuracy >= 90) {
+        rank = 'S';
+        title = 'Luar Biasa! Stres Auto Hilang!';
+      } else if (accuracy >= 75) {
+        rank = 'A';
+        title = 'Mantap! Ritmemu Stabil!';
+      } else if (accuracy >= 55) {
+        rank = 'B';
+        title = 'Cukup Santuy, Coba Lagi Yuk!';
+      }
+
+      rankEl.textContent = rank;
+      titleEl.textContent = title;
+      subEl.textContent = 'Pikiranmu sudah lebih segar sekarang.';
+    }
+
+    document.getElementById('finalScore').textContent = this.score.toLocaleString('id-ID');
+    document.getElementById('finalHighScore').textContent = highScore.toLocaleString('id-ID');
     document.getElementById('finalMaxCombo').textContent = `${this.maxCombo}x`;
     document.getElementById('finalPerfect').textContent = this.perfectCount;
     document.getElementById('finalGood').textContent = this.goodCount;
@@ -884,12 +1051,19 @@ function setupUIEvents() {
     const file = e.target.files[0];
     if (file) {
       appState.localAudioFile = file;
-      appState.selectedSongTitle = file.name.replace(/\.[^/.]+$/, '');
-      document.getElementById('uploadedFileName').textContent = `✅ ${file.name}`;
+      const cleanTitle = file.name.replace(/\.[^/.]+$/, '');
+      appState.selectedSongTitle = cleanTitle;
+
+      const box = document.querySelector('.upload-box');
+      box.classList.add('has-file');
+      document.getElementById('uploadedFileName').textContent = `✅ ${cleanTitle}`;
+
+      // Catat langsung ke daftar riwayat lokal jika belum ada
+      saveLocalSongRecord(cleanTitle, appState.selectedLevel, 0);
     }
   });
 
-  // Pilih 4 Level Kesulitan + Ubah Warna Tema Secara Dinamis
+  // Pilih 4 Level Kesulitan
   document.querySelectorAll('.level-card').forEach((card) => {
     card.addEventListener('click', () => {
       document.querySelectorAll('.level-card').forEach((c) => c.classList.remove('selected'));
