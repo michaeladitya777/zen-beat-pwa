@@ -14,7 +14,7 @@ const APP_CONFIG = {
       cooldown: 660,
       doubleChance: 0,
       holdChance: 0.14,
-      slideChance: 0.08,
+      slideChance: 0.1,
       beatThreshold: 175,
       missDamage: 7
     },
@@ -27,12 +27,12 @@ const APP_CONFIG = {
       cooldown: 440,
       doubleChance: 0.05,
       holdChance: 0.18,
-      slideChance: 0.14,
+      slideChance: 0.15,
       beatThreshold: 160,
       missDamage: 9
     },
     hard: {
-      name: 'Mode Sistem Kebut Semalam (SKS)',
+      name: 'Mode Kebut Semalam',
       short: 'HARD',
       color: '#fb923c',
       rgb: '251, 146, 60',
@@ -71,13 +71,17 @@ const appState = {
   selectedSongBpm: 95,
   localAudioBlob: null,
   selectedLevel: 'easy',
-  audioOffset: 0
+  audioOffset: 0,
+  sfxEnabled: true,
+  bgmEnabled: true,
+  customPerfectUrl: null,
+  customMissUrl: null
 };
 
-// --- 1. INDEXEDDB (LISENSI + PENYIMPANAN FILE AUDIO LOKAL UNTUK HISTORY) ---
+// --- 1. INDEXEDDB (LISENSI, LAGU LOKAL & CUSTOM SFX) ---
 function openAppDB() {
   return new Promise((resolve, reject) => {
-    const request = indexedDB.open('ZenBeatAppDB', 2);
+    const request = indexedDB.open('ZenBeatAppDB', 3);
     request.onupgradeneeded = (e) => {
       const db = e.target.result;
       if (!db.objectStoreNames.contains('meta')) {
@@ -85,6 +89,9 @@ function openAppDB() {
       }
       if (!db.objectStoreNames.contains('songs')) {
         db.createObjectStore('songs', { keyPath: 'title' });
+      }
+      if (!db.objectStoreNames.contains('sfx')) {
+        db.createObjectStore('sfx', { keyPath: 'type' });
       }
     };
     request.onsuccess = () => resolve(request.result);
@@ -131,7 +138,7 @@ async function saveSongBlobToDB(title, blob) {
     const tx = db.transaction('songs', 'readwrite');
     tx.objectStore('songs').put({ title, blob, savedAt: Date.now() });
   } catch (err) {
-    console.warn('Gagal menyimpan audio lokal ke IndexedDB:', err);
+    console.warn('Gagal menyimpan audio lokal:', err);
   }
 }
 
@@ -147,6 +154,56 @@ async function getSongBlobFromDB(title) {
   } catch {
     return null;
   }
+}
+
+async function saveCustomSfxToDB(type, file) {
+  try {
+    const db = await openAppDB();
+    const tx = db.transaction('sfx', 'readwrite');
+    tx.objectStore('sfx').put({ type, blob: file, name: file.name });
+  } catch (err) {
+    console.warn('Gagal menyimpan custom SFX:', err);
+  }
+}
+
+async function loadCustomSfxFromDB() {
+  try {
+    const db = await openAppDB();
+    const tx = db.transaction('sfx', 'readonly');
+    const store = tx.objectStore('sfx');
+
+    const perfReq = store.get('perfect');
+    perfReq.onsuccess = () => {
+      if (perfReq.result && perfReq.result.blob) {
+        appState.customPerfectUrl = URL.createObjectURL(perfReq.result.blob);
+        document.getElementById('customPerfectName').textContent = perfReq.result.name;
+      }
+    };
+
+    const missReq = store.get('miss');
+    missReq.onsuccess = () => {
+      if (missReq.result && missReq.result.blob) {
+        appState.customMissUrl = URL.createObjectURL(missReq.result.blob);
+        document.getElementById('customMissName').textContent = missReq.result.name;
+      }
+    };
+  } catch (err) {
+    console.warn('Load SFX fallback:', err);
+  }
+}
+
+async function clearCustomSfxDB() {
+  try {
+    const db = await openAppDB();
+    const tx = db.transaction('sfx', 'readwrite');
+    tx.objectStore('sfx').clear();
+  } catch {}
+  if (appState.customPerfectUrl) URL.revokeObjectURL(appState.customPerfectUrl);
+  if (appState.customMissUrl) URL.revokeObjectURL(appState.customMissUrl);
+  appState.customPerfectUrl = null;
+  appState.customMissUrl = null;
+  document.getElementById('customPerfectName').textContent = 'Default';
+  document.getElementById('customMissName').textContent = 'Default';
 }
 
 function generateDeviceId() {
@@ -173,12 +230,19 @@ async function initTrialAndDevice() {
   const activated = await getPersistedValue('isActivated');
   appState.isActivated = activated === 'true' || activated === true;
 
+  // Muat pengaturan offset & SFX
   const savedOffset = localStorage.getItem(APP_CONFIG.storageKeyPrefix + 'offset');
   if (savedOffset) {
     appState.audioOffset = Number(savedOffset);
     document.getElementById('offsetSlider').value = appState.audioOffset;
     document.getElementById('offsetValue').textContent = appState.audioOffset;
   }
+
+  const savedSfx = localStorage.getItem(APP_CONFIG.storageKeyPrefix + 'sfxEnabled');
+  appState.sfxEnabled = savedSfx !== 'false';
+  document.getElementById('sfxToggleCheckbox').checked = appState.sfxEnabled;
+
+  await loadCustomSfxFromDB();
 
   document.getElementById('deviceIdDisplay').textContent = deviceId;
   document.getElementById('paywallDeviceId').textContent = deviceId;
@@ -212,7 +276,75 @@ function updateTrialUI() {
   return true;
 }
 
-// --- 2. SISTEM PREVIEW MUSIK & VALIDASI DURASI ---
+// --- 2. THEME SONG MENU UTAMA (AMBIENT LO-FI BGM) & PREVIEW MUSIK ---
+const menuThemeManager = {
+  audioCtx: null,
+  intervalId: null,
+  isPlaying: false,
+  step: 0,
+
+  start() {
+    if (this.isPlaying || !appState.bgmEnabled) return;
+    if (document.getElementById('gameScreen').classList.contains('active')) return;
+
+    const AudioContext = window.AudioContext || window.webkitAudioContext;
+    this.audioCtx = new AudioContext();
+    if (this.audioCtx.state === 'suspended') {
+      this.audioCtx.resume().catch(() => {});
+    }
+
+    this.isPlaying = true;
+    this.step = 0;
+
+    // Progresi akor Lo-Fi yang menenangkan pikiran saat membuka aplikasi
+    const chords = [
+      [261.63, 329.63, 392.00, 493.88], // Cmaj7
+      [220.00, 261.63, 329.63, 392.00], // Am7
+      [174.61, 220.00, 261.63, 349.23], // Fmaj7
+      [196.00, 246.94, 293.66, 392.00]  // G6
+    ];
+
+    const playAmbientStep = () => {
+      if (!this.isPlaying || !appState.bgmEnabled) return;
+      const now = this.audioCtx.currentTime;
+      const chord = chords[this.step % chords.length];
+
+      chord.forEach((freq, idx) => {
+        const osc = this.audioCtx.createOscillator();
+        const gain = this.audioCtx.createGain();
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(freq, now + idx * 0.06);
+
+        gain.gain.setValueAtTime(0.0001, now + idx * 0.06);
+        gain.gain.linearRampToValueAtTime(0.025, now + idx * 0.06 + 0.4);
+        gain.gain.exponentialRampToValueAtTime(0.0001, now + 2.6);
+
+        osc.connect(gain);
+        gain.connect(this.audioCtx.destination);
+        osc.start(now + idx * 0.06);
+        osc.stop(now + 2.7);
+      });
+
+      this.step++;
+    };
+
+    playAmbientStep();
+    this.intervalId = setInterval(playAmbientStep, 2800);
+  },
+
+  stop() {
+    this.isPlaying = false;
+    if (this.intervalId) {
+      clearInterval(this.intervalId);
+      this.intervalId = null;
+    }
+    if (this.audioCtx) {
+      this.audioCtx.close().catch(() => {});
+      this.audioCtx = null;
+    }
+  }
+};
+
 const previewManager = {
   audioEl: null,
   audioCtx: null,
@@ -239,6 +371,7 @@ const previewManager = {
   },
 
   playBuiltinPreview(songId, bpm) {
+    menuThemeManager.stop();
     this.stop();
     const AudioContext = window.AudioContext || window.webkitAudioContext;
     this.audioCtx = new AudioContext();
@@ -269,10 +402,14 @@ const previewManager = {
       osc.stop(startTime + beatSec * 0.85);
     });
 
-    this.timer = setTimeout(() => this.stop(), 4000);
+    this.timer = setTimeout(() => {
+      this.stop();
+      menuThemeManager.start();
+    }, 4000);
   },
 
   playLocalPreview(blob) {
+    menuThemeManager.stop();
     this.stop();
     if (!blob) return;
     this.url = URL.createObjectURL(blob);
@@ -286,7 +423,10 @@ const previewManager = {
       this.audioEl.play().catch(() => {});
     });
 
-    this.timer = setTimeout(() => this.stop(), 6000);
+    this.timer = setTimeout(() => {
+      this.stop();
+      menuThemeManager.start();
+    }, 6000);
   }
 };
 
@@ -381,7 +521,6 @@ function renderLocalHistory() {
       </div>
     `;
 
-    // Klik riwayat: otomatis pilih lagu tersebut, muat audio dari IndexedDB, dan putar preview
     div.addEventListener('click', async () => {
       const savedBlob = await getSongBlobFromDB(item.title);
       if (!savedBlob) {
@@ -406,7 +545,7 @@ function renderLocalHistory() {
   });
 }
 
-// --- 4. MESIN GAME (TAP, HOLD, SLIDE, LIFE BAR & SFX) ---
+// --- 4. MESIN GAME (2-LANE SLIDE, PULSE TARGET LINE, CUSTOM SFX & HOLD) ---
 class RhythmEngine {
   constructor() {
     this.canvas = document.getElementById('gameCanvas');
@@ -424,19 +563,20 @@ class RhythmEngine {
     this.synthInterval = null;
     this.synthStep = 0;
 
-    // Visual & Juice Effects
+    // Visual & Pulse Effects
     this.notes = [];
     this.particles = [];
     this.shockwaves = [];
     this.laneFlashes = [0, 0, 0, 0];
     this.padPressScale = [1, 1, 1, 1];
     this.comboPulse = 1;
+    this.beatPulse = 0; // Intensitas kedipan garis target sesuai tempo
     this.shakeIntensity = 0;
     this.visualizerBars = new Array(16).fill(0);
 
-    // Input Tracking (Multi-touch & Keyboard)
-    this.activeTouches = new Map(); // pointerId -> { lane, startX, noteRef }
-    this.activeKeys = new Set();    // lane index yang sedang ditahan
+    // Input Tracking
+    this.activeTouches = new Map();
+    this.activeKeys = new Set();
 
     // Timing
     this.lastSpawnTime = 0;
@@ -472,7 +612,6 @@ class RhythmEngine {
   }
 
   bindInputs() {
-    // Pointer Down (Tap, Mulai Hold, atau Awal Slide)
     this.canvas.addEventListener('pointerdown', (e) => {
       if (!this.isRunning || this.isPaused) return;
       e.preventDefault();
@@ -492,7 +631,6 @@ class RhythmEngine {
       }
     });
 
-    // Pointer Move (Deteksi Gerakan Slide / Geser)
     this.canvas.addEventListener('pointermove', (e) => {
       if (!this.isRunning || this.isPaused) return;
       const touchData = this.activeTouches.get(e.pointerId);
@@ -502,15 +640,13 @@ class RhythmEngine {
       const currentX = e.clientX - rect.left;
       const deltaX = currentX - touchData.startX;
 
-      // Jika menggeser minimal 26px ke kiri atau kanan, cek note slide
-      if (Math.abs(deltaX) >= 26) {
+      if (Math.abs(deltaX) >= 24) {
         const dir = deltaX > 0 ? 1 : -1;
         this.handleSlideGesture(touchData.lane, dir);
         touchData.startX = currentX;
       }
     });
 
-    // Pointer Up / Cancel (Lepas Hold)
     const releasePointer = (e) => {
       const touchData = this.activeTouches.get(e.pointerId);
       if (touchData) {
@@ -521,7 +657,6 @@ class RhythmEngine {
     this.canvas.addEventListener('pointerup', releasePointer);
     this.canvas.addEventListener('pointercancel', releasePointer);
 
-    // Keyboard Support (D, F, J, K + Panah Kiri/Kanan untuk Slide)
     window.addEventListener('keydown', (e) => {
       if (!this.isRunning || this.isPaused || e.repeat) return;
       const keyMap = { KeyD: 0, KeyF: 1, KeyJ: 2, KeyK: 3 };
@@ -576,11 +711,11 @@ class RhythmEngine {
   }
 
   async start() {
+    menuThemeManager.stop();
     previewManager.stop();
     this.stop();
     this.resizeCanvas();
 
-    // Reset State
     this.notes = [];
     this.particles = [];
     this.shockwaves = [];
@@ -602,6 +737,7 @@ class RhythmEngine {
     this.lastEnergy = 0;
     this.builtinElapsedSec = 0;
     this.synthStep = 0;
+    this.beatPulse = 0;
 
     this.updateScoreHUD();
     this.updateLifeUI();
@@ -709,6 +845,9 @@ class RhythmEngine {
       const now = this.audioCtx.currentTime;
       const chord = chords[Math.floor(this.synthStep / 4) % chords.length];
 
+      // Kedipkan garis target bawah setiap ketukan tempo
+      this.beatPulse = 1.0;
+
       for (let i = 0; i < this.visualizerBars.length; i++) {
         this.visualizerBars[i] = 25 + Math.random() * 85;
       }
@@ -765,13 +904,28 @@ class RhythmEngine {
     this.synthInterval = setInterval(playStep, beatMs);
   }
 
-  // Sound Effect Mantap untuk Perfect, Slide, Hold & Miss
+  // Sound Effect (Bisa dimatikan di Pengaturan atau diganti file audio sendiri)
   playSoundEffect(type) {
+    if (!appState.sfxEnabled) return;
+
+    // Jika pengguna mengunggah Custom SFX sendiri
+    if ((type === 'perfect' || type === 'slide') && appState.customPerfectUrl) {
+      const sfx = new Audio(appState.customPerfectUrl);
+      sfx.volume = 0.8;
+      sfx.play().catch(() => {});
+      return;
+    }
+    if (type === 'miss' && appState.customMissUrl) {
+      const sfx = new Audio(appState.customMissUrl);
+      sfx.volume = 0.8;
+      sfx.play().catch(() => {});
+      return;
+    }
+
     if (!this.audioCtx) return;
     const now = this.audioCtx.currentTime;
 
     if (type === 'perfect' || type === 'slide') {
-      // Harmoni Chime Kristal Dua Nada (B5 + F#6) yang cerah dan memuaskan
       const freqs = type === 'slide' ? [880, 1318.51, 1760] : [987.77, 1479.98];
       freqs.forEach((f, i) => {
         const osc = this.audioCtx.createOscillator();
@@ -781,7 +935,7 @@ class RhythmEngine {
         osc.frequency.exponentialRampToValueAtTime(f * 1.04, now + 0.14);
 
         gain.gain.setValueAtTime(0.001, now + i * 0.025);
-        gain.gain.linearRampToValueAtTime(0.095, now + i * 0.025 + 0.015);
+        gain.gain.linearRampToValueAtTime(0.09, now + i * 0.025 + 0.015);
         gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.18);
 
         osc.connect(gain);
@@ -790,43 +944,27 @@ class RhythmEngine {
         osc.stop(now + 0.19);
       });
     } else if (type === 'miss') {
-      // Efek Miss Berat: Sub-bass drop + buzz dissonance
       const subOsc = this.audioCtx.createOscillator();
       const subGain = this.audioCtx.createGain();
       subOsc.type = 'sawtooth';
       subOsc.frequency.setValueAtTime(140, now);
       subOsc.frequency.exponentialRampToValueAtTime(38, now + 0.22);
 
-      subGain.gain.setValueAtTime(0.14, now);
+      subGain.gain.setValueAtTime(0.13, now);
       subGain.gain.exponentialRampToValueAtTime(0.0001, now + 0.23);
 
       subOsc.connect(subGain);
       subGain.connect(this.audioCtx.destination);
       subOsc.start(now);
       subOsc.stop(now + 0.24);
-
-      const buzzOsc = this.audioCtx.createOscillator();
-      const buzzGain = this.audioCtx.createGain();
-      buzzOsc.type = 'square';
-      buzzOsc.frequency.setValueAtTime(92, now);
-      buzzOsc.frequency.linearRampToValueAtTime(55, now + 0.18);
-
-      buzzGain.gain.setValueAtTime(0.06, now);
-      buzzGain.gain.exponentialRampToValueAtTime(0.0001, now + 0.19);
-
-      buzzOsc.connect(buzzGain);
-      buzzGain.connect(this.audioCtx.destination);
-      buzzOsc.start(now);
-      buzzOsc.stop(now + 0.2);
     } else {
-      // Tap bersih untuk Good / Bad
       const osc = this.audioCtx.createOscillator();
       const gain = this.audioCtx.createGain();
       osc.type = 'sine';
       osc.frequency.setValueAtTime(620, now);
       osc.frequency.exponentialRampToValueAtTime(310, now + 0.05);
 
-      gain.gain.setValueAtTime(0.065, now);
+      gain.gain.setValueAtTime(0.06, now);
       gain.gain.exponentialRampToValueAtTime(0.001, now + 0.055);
 
       osc.connect(gain);
@@ -838,8 +976,6 @@ class RhythmEngine {
 
   trySpawnBeatNote(now, forceBeat = false) {
     const levelCfg = APP_CONFIG.levels[appState.selectedLevel];
-    if (now - this.lastSpawnTime < levelCfg.cooldown) return;
-
     let isBeat = forceBeat;
 
     if (!forceBeat && this.analyser) {
@@ -856,9 +992,12 @@ class RhythmEngine {
 
       if (bassAvg > levelCfg.beatThreshold && bassAvg > this.lastEnergy + 8) {
         isBeat = true;
+        this.beatPulse = 1.0; // Garis target bawah berkedip saat beat bass lagu lokal terdeteksi
       }
       this.lastEnergy = bassAvg * 0.92;
     }
+
+    if (now - this.lastSpawnTime < levelCfg.cooldown) return;
 
     if (isBeat) {
       const lane1 = Math.floor(Math.random() * 4);
@@ -873,21 +1012,19 @@ class RhythmEngine {
           y: -30,
           length: holdLength,
           holding: false,
-          completed: false,
           hit: false,
           tickAccum: 0
         });
-        // Tambah jeda cooldown agar tidak bertabrakan dengan ekor hold
         this.lastSpawnTime = now + (holdLength / levelCfg.speed) * 650;
       } else if (roll < levelCfg.holdChance + levelCfg.slideChance) {
-        // 2. NOTE SLIDE (Geser Kiri/Kanan)
-        let dir = Math.random() < 0.5 ? -1 : 1;
-        if (lane1 === 0) dir = 1;
-        if (lane1 === 3) dir = -1;
+        // 2. NOTE SLIDE LEBAR 2 TUTS (Sangat Jelas dengan Panah Arah)
+        const startLane = Math.floor(Math.random() * 3); // 0..2 agar muat 2 tuts (startLane & startLane+1)
+        const dir = Math.random() < 0.5 ? -1 : 1;
 
         this.notes.push({
           type: 'slide',
-          lane: lane1,
+          lane: startLane,
+          span: 2, // Lebar 2 tuts
           y: -30,
           slideDir: dir, // -1 = geser kiri, 1 = geser kanan
           hit: false
@@ -918,7 +1055,7 @@ class RhythmEngine {
 
   handleLaneDown(lane) {
     this.laneFlashes[lane] = 1.0;
-    this.padPressScale[lane] = 0.86;
+    this.padPressScale[lane] = 0.88;
 
     const offsetPixels = (appState.audioOffset / 1000) * APP_CONFIG.levels[appState.selectedLevel].speed;
     const targetY = this.hitLineY + offsetPixels;
@@ -927,7 +1064,13 @@ class RhythmEngine {
     let minDiff = Infinity;
 
     for (const note of this.notes) {
-      if (note.lane === lane && !note.hit && !note.holding) {
+      if (note.hit || note.holding) continue;
+      // Cek apakah lane berada dalam jangkauan note (termasuk note slide yang lebarnya 2 tuts)
+      const isLaneCovered = note.type === 'slide'
+        ? (lane === note.lane || lane === note.lane + 1)
+        : (note.lane === lane);
+
+      if (isLaneCovered) {
         const diff = Math.abs(note.y - targetY);
         if (diff < minDiff) {
           minDiff = diff;
@@ -938,13 +1081,11 @@ class RhythmEngine {
 
     if (!closestNote || minDiff > 105) return null;
 
-    // Jika Note Slide disentuh, tandai siap digeser (juga bisa langsung terpicu saat digeser)
     if (closestNote.type === 'slide') {
       closestNote.touched = true;
       return closestNote;
     }
 
-    // Jika Note Hold disentuh, mulai status menahan (holding)
     if (closestNote.type === 'hold') {
       closestNote.holding = true;
       this.missStreak = 0;
@@ -952,7 +1093,6 @@ class RhythmEngine {
       return closestNote;
     }
 
-    // Note Tap biasa
     closestNote.hit = true;
     this.missStreak = 0;
     this.evaluateTimingHit(minDiff, lane);
@@ -965,13 +1105,14 @@ class RhythmEngine {
 
     for (const note of this.notes) {
       if (note.type === 'slide' && !note.hit) {
-        const laneMatch = startLane === -1 || note.lane === startLane || note.touched;
+        const laneMatch = startLane === -1 || startLane === note.lane || startLane === note.lane + 1 || note.touched;
         const diff = Math.abs(note.y - targetY);
-        if (laneMatch && diff <= 115 && note.slideDir === dir) {
+
+        if (laneMatch && diff <= 120 && note.slideDir === dir) {
           note.hit = true;
           this.missStreak = 0;
-          const targetLane = Math.max(0, Math.min(3, note.lane + dir));
-          this.laneFlashes[targetLane] = 1.0;
+          this.laneFlashes[note.lane] = 1.0;
+          this.laneFlashes[note.lane + 1] = 1.0;
 
           this.score += 130 + this.combo * 5;
           this.combo++;
@@ -986,7 +1127,8 @@ class RhythmEngine {
 
           if (this.combo > this.maxCombo) this.maxCombo = this.combo;
           this.comboPulse = 1.35;
-          this.spawnHitEffects(targetLane);
+          this.spawnHitEffects(note.lane);
+          this.spawnHitEffects(note.lane + 1);
           this.updateScoreHUD();
           this.updateLifeUI();
           if (navigator.vibrate) navigator.vibrate(20);
@@ -1000,7 +1142,6 @@ class RhythmEngine {
     for (const note of this.notes) {
       if (note.type === 'hold' && note.lane === lane && note.holding && !note.hit) {
         const tailY = note.y - note.length;
-        // Jika dilepas sebelum ekor balok mendekati garis hit, anggap selesai sebagian
         note.holding = false;
         note.hit = true;
         if (tailY >= this.hitLineY - 65) {
@@ -1016,7 +1157,6 @@ class RhythmEngine {
 
   evaluateTimingHit(minDiff, lane, customPerfectText = null) {
     if (minDiff <= 42) {
-      // PERFECT (Biru Cyan - Naik mulus ke atas, goyang HANYA saat kelipatan x25)
       this.score += 100 + this.combo * 5;
       this.combo++;
       this.perfectStreak++;
@@ -1037,7 +1177,6 @@ class RhythmEngine {
       this.shakeIntensity = isMilestone ? 6.5 : 1.5;
       if (navigator.vibrate) navigator.vibrate(isMilestone ? 30 : 14);
     } else if (minDiff <= 76) {
-      // GOOD (Hijau - Naik dari bawah ke atas)
       this.score += 50 + this.combo * 2;
       this.combo++;
       this.perfectStreak = 0;
@@ -1050,7 +1189,6 @@ class RhythmEngine {
       this.showFeedback('GOOD', 'anim-good');
       this.playSoundEffect('tap');
     } else {
-      // BAD (Merah Muda - Goyang di tempat saja)
       this.score += 15;
       this.combo = 0;
       this.perfectStreak = 0;
@@ -1088,12 +1226,12 @@ class RhythmEngine {
       color: levelColor
     });
 
-    for (let i = 0; i < 10; i++) {
+    for (let i = 0; i < 8; i++) {
       this.particles.push({
         x: cx,
         y: this.hitLineY,
-        vx: (Math.random() - 0.5) * 260,
-        vy: (Math.random() - 0.85) * 260,
+        vx: (Math.random() - 0.5) * 250,
+        vy: (Math.random() - 0.85) * 250,
         size: 3 + Math.random() * 3,
         alpha: 1,
         color: levelColor
@@ -1128,7 +1266,6 @@ class RhythmEngine {
     const dt = (timestamp - this.lastFrameTime) / 1000;
     this.lastFrameTime = timestamp;
 
-    // Update Progress Lagu
     let elapsedSec = 0;
     if (this.audioEl && !isNaN(this.audioEl.duration)) {
       elapsedSec = this.audioEl.currentTime;
@@ -1150,7 +1287,6 @@ class RhythmEngine {
       this.trySpawnBeatNote(timestamp, false);
     }
 
-    // Update Posisi & Status Semua Jenis Balok (Tap, Hold, Slide)
     const levelCfg = APP_CONFIG.levels[appState.selectedLevel];
     for (const note of this.notes) {
       if (note.hit) continue;
@@ -1158,9 +1294,8 @@ class RhythmEngine {
       note.y += levelCfg.speed * dt;
 
       if (note.type === 'hold' && note.holding) {
-        // Beri bonus skor & partikel kontinu selama balok ditahan
         this.laneFlashes[note.lane] = 0.85;
-        this.padPressScale[note.lane] = 0.88;
+        this.padPressScale[note.lane] = 0.9;
         note.tickAccum += dt;
         if (note.tickAccum >= 0.08) {
           note.tickAccum = 0;
@@ -1169,7 +1304,6 @@ class RhythmEngine {
           this.spawnHitEffects(note.lane);
         }
 
-        // Cek apakah ekor balok hold sudah selesai melewati garis hit
         if (note.y - note.length >= this.hitLineY) {
           note.holding = false;
           note.hit = true;
@@ -1181,9 +1315,7 @@ class RhythmEngine {
           this.updateLifeUI();
         }
       } else {
-        // Cek apakah note terlewat (Miss)
-        const missThreshold = this.height + 24;
-        if (note.y > missThreshold) {
+        if (note.y > this.height + 24) {
           note.hit = true;
           this.combo = 0;
           this.perfectStreak = 0;
@@ -1209,7 +1341,6 @@ class RhythmEngine {
     }
     this.notes = this.notes.filter((n) => !n.hit);
 
-    // Decay animasi visual
     for (let i = 0; i < 4; i++) {
       this.laneFlashes[i] = Math.max(0, this.laneFlashes[i] - dt * 4.5);
       this.padPressScale[i] += (1 - this.padPressScale[i]) * Math.min(1, dt * 18);
@@ -1219,6 +1350,7 @@ class RhythmEngine {
       this.visualizerBars[i] = Math.max(0, this.visualizerBars[i] - dt * 140);
     }
 
+    this.beatPulse = Math.max(0, this.beatPulse - dt * 4.2);
     this.comboPulse += (1 - this.comboPulse) * Math.min(1, dt * 12);
     this.shakeIntensity = Math.max(0, this.shakeIntensity - dt * 25);
 
@@ -1315,7 +1447,7 @@ class RhythmEngine {
       }
 
       if (i > 0) {
-        ctx.strokeStyle = 'rgba(255, 255, 255, 0.04)';
+        ctx.strokeStyle = 'rgba(255, 255, 255, 0.035)';
         ctx.lineWidth = 1;
         ctx.beginPath();
         ctx.moveTo(x, 0);
@@ -1324,24 +1456,24 @@ class RhythmEngine {
       }
     }
 
-    // 4. Tuts Tombol Bawah Tanpa Border (Lebih Bersih & Tidak Kaku)
+    // 4. Tuts Bawah Menyatu (Jarak Sangat Tipis 2px, Tanpa Border)
     const keyLabels = ['D', 'F', 'J', 'K'];
     for (let i = 0; i < 4; i++) {
-      const padW = laneW - 14;
-      const padH = 54;
+      const padW = laneW - 2; // Jarak antar tuts hanya 2px agar terlihat menyatu
+      const padH = 56;
       const cx = i * laneW + laneW / 2;
-      const cy = this.hitLineY + 12;
+      const cy = this.hitLineY + 14;
 
       ctx.save();
       ctx.translate(cx, cy);
       ctx.scale(this.padPressScale[i], this.padPressScale[i]);
 
       ctx.fillStyle = this.laneFlashes[i] > 0.15
-        ? `rgba(${levelRgb}, 0.38)`
-        : 'rgba(255, 255, 255, 0.05)';
+        ? `rgba(${levelRgb}, 0.42)`
+        : 'rgba(255, 255, 255, 0.06)';
 
       ctx.beginPath();
-      ctx.roundRect(-padW / 2, -padH / 2, padW, padH, 14);
+      ctx.roundRect(-padW / 2, -padH / 2, padW, padH, 10);
       ctx.fill();
 
       ctx.fillStyle = 'rgba(255, 255, 255, 0.22)';
@@ -1351,14 +1483,60 @@ class RhythmEngine {
       ctx.restore();
     }
 
-    // 5. Gambar Balok Nada (Tap, Hold Panjang, dan Slide Geser)
+    // 5. Garis Target Semi-Transparan Berkedip Sesuai Tempo (Membantu Timing Perfect)
+    const pulseAlpha = 0.22 + this.beatPulse * 0.58;
+    const pulseWidth = 2 + this.beatPulse * 2.5;
+    ctx.save();
+    ctx.strokeStyle = `rgba(${levelRgb}, ${pulseAlpha})`;
+    ctx.lineWidth = pulseWidth;
+    if (this.beatPulse > 0.2) {
+      ctx.shadowColor = levelColor;
+      ctx.shadowBlur = 12 * this.beatPulse;
+    }
+    ctx.beginPath();
+    ctx.moveTo(0, this.hitLineY);
+    ctx.lineTo(this.width, this.hitLineY);
+    ctx.stroke();
+    ctx.restore();
+
+    // 6. Gambar Balok Nada (Tap, Hold Panjang, dan Slide Lebar 2 Tuts)
     for (const note of this.notes) {
-      const x = note.lane * laneW + 9;
-      const w = laneW - 18;
+      if (note.type === 'slide') {
+        // Balok Slide Lebar 2 Tuts (Sangat Terlihat pada Tempo Cepat)
+        const x = note.lane * laneW + 4;
+        const w = laneW * 2 - 8;
+        const h = 34;
+        const slideColor = '#facc15';
+
+        // Jejak cahaya lebar 2 tuts
+        const trailGrad = ctx.createLinearGradient(0, note.y - 65, 0, note.y);
+        trailGrad.addColorStop(0, 'rgba(250, 204, 21, 0)');
+        trailGrad.addColorStop(1, 'rgba(250, 204, 21, 0.22)');
+        ctx.fillStyle = trailGrad;
+        ctx.fillRect(x + 4, note.y - 65, w - 8, 65);
+
+        ctx.fillStyle = slideColor;
+        ctx.shadowColor = slideColor;
+        ctx.shadowBlur = 18;
+        ctx.beginPath();
+        ctx.roundRect(x, note.y - h / 2, w, h, 12);
+        ctx.fill();
+        ctx.shadowBlur = 0;
+
+        // Deretan panah arah geser besar di tengah 2 tuts
+        ctx.fillStyle = '#090b12';
+        ctx.font = '900 15px sans-serif';
+        ctx.textAlign = 'center';
+        const arrowLabel = note.slideDir === 1 ? 'GESER  ▶ ▶ ▶' : '◀ ◀ ◀  GESER';
+        ctx.fillText(arrowLabel, x + w / 2, note.y + 5);
+        continue;
+      }
+
+      const x = note.lane * laneW + 5;
+      const w = laneW - 10;
       const h = 30;
 
       if (note.type === 'hold') {
-        // Batang Hold Panjang
         const headY = note.holding ? this.hitLineY : note.y;
         const tailY = note.y - note.length;
         const bodyH = Math.max(0, headY - tailY);
@@ -1368,11 +1546,9 @@ class RhythmEngine {
         ctx.roundRect(x + 6, tailY, w - 12, bodyH, 10);
         ctx.fill();
 
-        // Garis inti bercahaya di tengah batang hold
-        ctx.fillStyle = `rgba(255, 255, 255, 0.35)`;
+        ctx.fillStyle = 'rgba(255, 255, 255, 0.35)';
         ctx.fillRect(x + w / 2 - 2, tailY + 6, 4, Math.max(0, bodyH - 12));
 
-        // Kepala Balok Hold
         ctx.fillStyle = levelColor;
         ctx.shadowColor = levelColor;
         ctx.shadowBlur = 14;
@@ -1385,24 +1561,6 @@ class RhythmEngine {
         ctx.font = '900 10px sans-serif';
         ctx.textAlign = 'center';
         ctx.fillText('HOLD', x + w / 2, headY + 3.5);
-      } else if (note.type === 'slide') {
-        // Balok Slide Geser (Warna Emas / Kuning Cerah dengan Panah Arah)
-        const slideColor = '#facc15';
-        ctx.fillStyle = slideColor;
-        ctx.shadowColor = slideColor;
-        ctx.shadowBlur = 16;
-
-        ctx.beginPath();
-        ctx.roundRect(x, note.y - h / 2, w, h, 10);
-        ctx.fill();
-        ctx.shadowBlur = 0;
-
-        // Panah arah geser (◀◀ atau ▶▶)
-        ctx.fillStyle = '#0b0d14';
-        ctx.font = '900 13px sans-serif';
-        ctx.textAlign = 'center';
-        const arrow = note.slideDir === 1 ? '▶▶' : '◀◀';
-        ctx.fillText(arrow, x + w / 2, note.y + 4.5);
       } else {
         // Note Tap Biasa
         const trailGrad = ctx.createLinearGradient(0, note.y - 75, 0, note.y);
@@ -1427,7 +1585,7 @@ class RhythmEngine {
       }
     }
 
-    // 6. Shockwave Rings
+    // 7. Shockwave Rings & Partikel
     for (const sw of this.shockwaves) {
       ctx.beginPath();
       ctx.arc(sw.x, sw.y, sw.radius, 0, Math.PI * 2);
@@ -1436,7 +1594,6 @@ class RhythmEngine {
       ctx.stroke();
     }
 
-    // 7. Partikel Ledakan Ketukan
     for (const p of this.particles) {
       ctx.globalAlpha = Math.max(0, p.alpha);
       ctx.fillStyle = p.color;
@@ -1541,6 +1698,31 @@ function applyThemeColor(levelKey) {
 function setupUIEvents() {
   rhythmEngine = new RhythmEngine();
 
+  // Mulai Theme Song otomatis saat interaksi pertama pengguna pada halaman
+  const unlockThemeAudio = () => {
+    menuThemeManager.start();
+    window.removeEventListener('pointerdown', unlockThemeAudio);
+    window.removeEventListener('keydown', unlockThemeAudio);
+  };
+  window.addEventListener('pointerdown', unlockThemeAudio);
+  window.addEventListener('keydown', unlockThemeAudio);
+
+  // Tombol Mute/Unmute Theme Song Menu di Header
+  const bgmBtn = document.getElementById('bgmToggleBtn');
+  bgmBtn.addEventListener('click', (e) => {
+    e.stopPropagation();
+    appState.bgmEnabled = !appState.bgmEnabled;
+    if (appState.bgmEnabled) {
+      bgmBtn.textContent = '🎵 BGM: ON';
+      bgmBtn.classList.remove('muted');
+      menuThemeManager.start();
+    } else {
+      bgmBtn.textContent = '🔇 BGM: OFF';
+      bgmBtn.classList.add('muted');
+      menuThemeManager.stop();
+    }
+  });
+
   // Tab Lagu Bawaan vs Lokal
   document.querySelectorAll('.tab-btn').forEach((btn) => {
     btn.addEventListener('click', () => {
@@ -1574,7 +1756,7 @@ function setupUIEvents() {
     });
   });
 
-  // Upload Lagu Lokal + Validasi Durasi (30 detik - 10 menit) + Simpan ke IndexedDB
+  // Upload Lagu Lokal + Validasi Durasi (30 detik - 10 menit)
   const fileInput = document.getElementById('audioFileInput');
   fileInput.addEventListener('change', async (e) => {
     const file = e.target.files[0];
@@ -1652,6 +1834,7 @@ function setupUIEvents() {
     rhythmEngine.stop();
     document.getElementById('gameScreen').classList.remove('active');
     document.getElementById('menuScreen').classList.add('active');
+    menuThemeManager.start();
   });
 
   // Tombol di Modal Hasil Akhir
@@ -1664,12 +1847,40 @@ function setupUIEvents() {
     document.getElementById('resultModal').classList.add('hidden');
     document.getElementById('gameScreen').classList.remove('active');
     document.getElementById('menuScreen').classList.add('active');
+    menuThemeManager.start();
   });
 
-  // Modal Pengaturan Kalibrasi Delay
+  // Modal Pengaturan (SFX Toggle, Custom SFX Upload, & Delay)
   const settingsModal = document.getElementById('settingsModal');
   document.getElementById('openSettingsBtn').addEventListener('click', () => {
     settingsModal.classList.remove('hidden');
+  });
+
+  document.getElementById('sfxToggleCheckbox').addEventListener('change', (e) => {
+    appState.sfxEnabled = e.target.checked;
+    localStorage.setItem(APP_CONFIG.storageKeyPrefix + 'sfxEnabled', String(appState.sfxEnabled));
+  });
+
+  document.getElementById('customPerfectSfxInput').addEventListener('change', async (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    if (appState.customPerfectUrl) URL.revokeObjectURL(appState.customPerfectUrl);
+    appState.customPerfectUrl = URL.createObjectURL(file);
+    document.getElementById('customPerfectName').textContent = file.name;
+    await saveCustomSfxToDB('perfect', file);
+  });
+
+  document.getElementById('customMissSfxInput').addEventListener('change', async (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    if (appState.customMissUrl) URL.revokeObjectURL(appState.customMissUrl);
+    appState.customMissUrl = URL.createObjectURL(file);
+    document.getElementById('customMissName').textContent = file.name;
+    await saveCustomSfxToDB('miss', file);
+  });
+
+  document.getElementById('resetSfxBtn').addEventListener('click', async () => {
+    await clearCustomSfxDB();
   });
 
   document.getElementById('offsetSlider').addEventListener('input', (e) => {
