@@ -1,0 +1,22 @@
+{
+  "name": "ZenBeat — Game Musik Pelepas Penat",
+  "short_name": "ZenBeat",
+  "description": "Game musik ritme santai hingga Mode WNI untuk melepas penat kerja dan kuliah.",
+  "start_url": "./index.html",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#12141d",
+  "theme_color": "#12141d",
+  "icons": [
+    {
+      "src": "https://cdn-icons-png.flaticon.com/512/727/727245.png",
+      "sizes": "192x192",
+      "type": "image/png"
+    },
+    {
+      "src": "https://cdn-icons-png.flaticon.com/512/727/727245.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    }
+  ]
+}
