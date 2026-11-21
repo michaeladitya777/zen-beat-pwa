@@ -7,41 +7,53 @@ const APP_CONFIG = {
   levels: {
     easy: {
       name: 'Mode Santuy',
+      short: 'EASY',
       color: '#38bdf8',
       rgb: '56, 189, 248',
       speed: 280,
-      cooldown: 640,
+      cooldown: 660,
       doubleChance: 0,
+      holdChance: 0.14,
+      slideChance: 0.08,
       beatThreshold: 175,
       missDamage: 7
     },
     normal: {
       name: 'Mode Biasa Aja',
+      short: 'NORMAL',
       color: '#34d399',
       rgb: '52, 211, 153',
       speed: 390,
-      cooldown: 420,
-      doubleChance: 0.06,
+      cooldown: 440,
+      doubleChance: 0.05,
+      holdChance: 0.18,
+      slideChance: 0.14,
       beatThreshold: 160,
       missDamage: 9
     },
     hard: {
       name: 'Mode Sistem Kebut Semalam (SKS)',
+      short: 'HARD',
       color: '#fb923c',
       rgb: '251, 146, 60',
       speed: 520,
-      cooldown: 235,
-      doubleChance: 0.16,
+      cooldown: 250,
+      doubleChance: 0.14,
+      holdChance: 0.22,
+      slideChance: 0.18,
       beatThreshold: 145,
       missDamage: 10
     },
     extreme: {
       name: 'Mode WNI',
+      short: 'EXTREME',
       color: '#f43f5e',
       rgb: '244, 63, 94',
-      speed: 660,
-      cooldown: 145,
-      doubleChance: 0.35,
+      speed: 650,
+      cooldown: 165,
+      doubleChance: 0.28,
+      holdChance: 0.22,
+      slideChance: 0.22,
       beatThreshold: 132,
       missDamage: 12
     }
@@ -57,7 +69,7 @@ const appState = {
   selectedSongId: 'lofi-chill',
   selectedSongTitle: 'Hujan Sore di Kantor',
   selectedSongBpm: 95,
-  localAudioBlob: null, // Menyimpan Blob/File lagu lokal yang siap dimainkan
+  localAudioBlob: null,
   selectedLevel: 'easy',
   audioOffset: 0
 };
@@ -268,7 +280,6 @@ const previewManager = {
     this.audioEl.volume = 0.65;
 
     this.audioEl.addEventListener('loadedmetadata', () => {
-      // Lompat ke sekitar 20% durasi lagu agar langsung terdengar bagian musiknya
       if (this.audioEl && this.audioEl.duration > 15) {
         this.audioEl.currentTime = Math.min(this.audioEl.duration * 0.2, 30);
       }
@@ -295,10 +306,10 @@ function checkAudioDuration(blob) {
   });
 }
 
-// --- 3. MANAJEMEN RIWAYAT & HIGHEST SCORE LAGU LOKAL ---
+// --- 3. MANAJEMEN RIWAYAT & HIGHEST SCORE PER LEVEL ---
 function getLocalHistory() {
   try {
-    return JSON.parse(localStorage.getItem(APP_CONFIG.storageKeyPrefix + 'local_history')) || [];
+    return JSON.parse(localStorage.getItem(APP_CONFIG.storageKeyPrefix + 'local_history_v2')) || [];
   } catch {
     return [];
   }
@@ -307,23 +318,25 @@ function getLocalHistory() {
 function saveLocalSongRecord(title, levelKey, newScore) {
   const history = getLocalHistory();
   const existingIdx = history.findIndex((item) => item.title === title);
-  let highScore = newScore;
 
+  let scores = { easy: 0, normal: 0, hard: 0, extreme: 0 };
   if (existingIdx !== -1) {
-    highScore = Math.max(history[existingIdx].highScore, newScore);
+    scores = { ...scores, ...(history[existingIdx].scores || {}) };
     history.splice(existingIdx, 1);
   }
 
+  scores[levelKey] = Math.max(scores[levelKey] || 0, newScore);
+
   history.unshift({
     title,
-    levelKey,
-    highScore,
+    lastLevel: levelKey,
+    scores,
     updatedAt: Date.now()
   });
 
-  localStorage.setItem(APP_CONFIG.storageKeyPrefix + 'local_history', JSON.stringify(history.slice(0, 15)));
+  localStorage.setItem(APP_CONFIG.storageKeyPrefix + 'local_history_v2', JSON.stringify(history.slice(0, 15)));
   renderLocalHistory();
-  return highScore;
+  return scores[levelKey];
 }
 
 function renderLocalHistory() {
@@ -339,24 +352,36 @@ function renderLocalHistory() {
   wrapper.classList.remove('hidden');
   listEl.innerHTML = '';
 
+  const levelKeys = ['easy', 'normal', 'hard', 'extreme'];
+
   history.forEach((item) => {
-    const lvl = APP_CONFIG.levels[item.levelKey] || APP_CONFIG.levels.easy;
     const isSelected = appState.selectedSource === 'local' && appState.selectedSongTitle === item.title;
+    const scores = item.scores || { easy: 0, normal: 0, hard: 0, extreme: 0 };
+
+    const badgesHtml = levelKeys.map((lk) => {
+      const cfg = APP_CONFIG.levels[lk];
+      const val = scores[lk] || 0;
+      return `
+        <div class="hs-badge">
+          <small style="color: ${cfg.color}">${cfg.short}</small>
+          <span>${val > 0 ? val.toLocaleString('id-ID') : '-'}</span>
+        </div>
+      `;
+    }).join('');
 
     const div = document.createElement('div');
     div.className = `history-item ${isSelected ? 'active-history' : ''}`;
     div.innerHTML = `
-      <div class="history-left">
+      <div class="history-title-row">
         <strong>🎵 ${item.title}</strong>
-        <span class="history-mode-tag" style="color: ${lvl.color}">${lvl.name}</span>
+        ${isSelected ? '<span class="history-active-pill">Dipilih</span>' : ''}
       </div>
-      <div class="history-right">
-        <small>HIGHEST SCORE</small>
-        <strong>${item.highScore.toLocaleString('id-ID')}</strong>
+      <div class="history-scores-grid">
+        ${badgesHtml}
       </div>
     `;
 
-    // Klik riwayat: otomatis pilih lagu tersebut, muat audio dari IndexedDB, dan putar preview!
+    // Klik riwayat: otomatis pilih lagu tersebut, muat audio dari IndexedDB, dan putar preview
     div.addEventListener('click', async () => {
       const savedBlob = await getSongBlobFromDB(item.title);
       if (!savedBlob) {
@@ -368,15 +393,6 @@ function renderLocalHistory() {
       appState.selectedSource = 'local';
       appState.localAudioBlob = savedBlob;
       appState.selectedSongTitle = item.title;
-
-      // Pilih level sesuai riwayat terakhir lagu tersebut
-      document.querySelectorAll('.level-card').forEach((c) => c.classList.remove('selected'));
-      const targetCard = document.querySelector(`.level-card[data-level="${item.levelKey}"]`);
-      if (targetCard) {
-        targetCard.classList.add('selected');
-        appState.selectedLevel = item.levelKey;
-        applyThemeColor(item.levelKey);
-      }
 
       const box = document.getElementById('uploadBoxLabel');
       box.classList.add('has-file');
@@ -390,7 +406,7 @@ function renderLocalHistory() {
   });
 }
 
-// --- 4. MESIN GAME, LIFE BAR, PAUSE & 4 TIER FEEDBACK ---
+// --- 4. MESIN GAME (TAP, HOLD, SLIDE, LIFE BAR & SFX) ---
 class RhythmEngine {
   constructor() {
     this.canvas = document.getElementById('gameCanvas');
@@ -417,6 +433,10 @@ class RhythmEngine {
     this.comboPulse = 1;
     this.shakeIntensity = 0;
     this.visualizerBars = new Array(16).fill(0);
+
+    // Input Tracking (Multi-touch & Keyboard)
+    this.activeTouches = new Map(); // pointerId -> { lane, startX, noteRef }
+    this.activeKeys = new Set();    // lane index yang sedang ditahan
 
     // Timing
     this.lastSpawnTime = 0;
@@ -452,22 +472,76 @@ class RhythmEngine {
   }
 
   bindInputs() {
+    // Pointer Down (Tap, Mulai Hold, atau Awal Slide)
     this.canvas.addEventListener('pointerdown', (e) => {
       if (!this.isRunning || this.isPaused) return;
       e.preventDefault();
+      this.canvas.setPointerCapture(e.pointerId);
+
       const rect = this.canvas.getBoundingClientRect();
       const x = e.clientX - rect.left;
       const lane = Math.floor(x / (this.width / 4));
+
       if (lane >= 0 && lane < 4) {
-        this.handleLaneHit(lane);
+        const hitNote = this.handleLaneDown(lane);
+        this.activeTouches.set(e.pointerId, {
+          lane,
+          startX: x,
+          noteRef: hitNote
+        });
       }
     });
 
+    // Pointer Move (Deteksi Gerakan Slide / Geser)
+    this.canvas.addEventListener('pointermove', (e) => {
+      if (!this.isRunning || this.isPaused) return;
+      const touchData = this.activeTouches.get(e.pointerId);
+      if (!touchData) return;
+
+      const rect = this.canvas.getBoundingClientRect();
+      const currentX = e.clientX - rect.left;
+      const deltaX = currentX - touchData.startX;
+
+      // Jika menggeser minimal 26px ke kiri atau kanan, cek note slide
+      if (Math.abs(deltaX) >= 26) {
+        const dir = deltaX > 0 ? 1 : -1;
+        this.handleSlideGesture(touchData.lane, dir);
+        touchData.startX = currentX;
+      }
+    });
+
+    // Pointer Up / Cancel (Lepas Hold)
+    const releasePointer = (e) => {
+      const touchData = this.activeTouches.get(e.pointerId);
+      if (touchData) {
+        this.handleLaneRelease(touchData.lane);
+        this.activeTouches.delete(e.pointerId);
+      }
+    };
+    this.canvas.addEventListener('pointerup', releasePointer);
+    this.canvas.addEventListener('pointercancel', releasePointer);
+
+    // Keyboard Support (D, F, J, K + Panah Kiri/Kanan untuk Slide)
     window.addEventListener('keydown', (e) => {
       if (!this.isRunning || this.isPaused || e.repeat) return;
       const keyMap = { KeyD: 0, KeyF: 1, KeyJ: 2, KeyK: 3 };
       if (keyMap[e.code] !== undefined) {
-        this.handleLaneHit(keyMap[e.code]);
+        const lane = keyMap[e.code];
+        this.activeKeys.add(lane);
+        this.handleLaneDown(lane);
+      } else if (e.code === 'ArrowLeft') {
+        this.handleSlideGesture(-1, -1);
+      } else if (e.code === 'ArrowRight') {
+        this.handleSlideGesture(-1, 1);
+      }
+    });
+
+    window.addEventListener('keyup', (e) => {
+      const keyMap = { KeyD: 0, KeyF: 1, KeyJ: 2, KeyK: 3 };
+      if (keyMap[e.code] !== undefined) {
+        const lane = keyMap[e.code];
+        this.activeKeys.delete(lane);
+        this.handleLaneRelease(lane);
       }
     });
   }
@@ -512,6 +586,8 @@ class RhythmEngine {
     this.shockwaves = [];
     this.laneFlashes = [0, 0, 0, 0];
     this.padPressScale = [1, 1, 1, 1];
+    this.activeTouches.clear();
+    this.activeKeys.clear();
     this.life = 100;
     this.score = 0;
     this.combo = 0;
@@ -553,6 +629,8 @@ class RhythmEngine {
   pause() {
     if (!this.isRunning || this.isPaused) return;
     this.isPaused = true;
+    this.activeTouches.clear();
+    this.activeKeys.clear();
     if (this.animFrameId) cancelAnimationFrame(this.animFrameId);
     if (this.synthInterval) clearInterval(this.synthInterval);
     if (this.audioEl) this.audioEl.pause();
@@ -687,46 +765,74 @@ class RhythmEngine {
     this.synthInterval = setInterval(playStep, beatMs);
   }
 
-  // Sound Effect Khusus Perfect, Good/Bad, dan Miss
+  // Sound Effect Mantap untuk Perfect, Slide, Hold & Miss
   playSoundEffect(type) {
     if (!this.audioCtx) return;
     const now = this.audioCtx.currentTime;
-    const osc = this.audioCtx.createOscillator();
-    const gain = this.audioCtx.createGain();
 
-    if (type === 'perfect') {
-      // Suara lonceng kristal cerah
-      osc.type = 'sine';
-      osc.frequency.setValueAtTime(987.77, now); // B5
-      osc.frequency.exponentialRampToValueAtTime(1318.51, now + 0.06); // E6
-      gain.gain.setValueAtTime(0.08, now);
-      gain.gain.exponentialRampToValueAtTime(0.001, now + 0.09);
-      osc.connect(gain);
-      gain.connect(this.audioCtx.destination);
-      osc.start(now);
-      osc.stop(now + 0.095);
+    if (type === 'perfect' || type === 'slide') {
+      // Harmoni Chime Kristal Dua Nada (B5 + F#6) yang cerah dan memuaskan
+      const freqs = type === 'slide' ? [880, 1318.51, 1760] : [987.77, 1479.98];
+      freqs.forEach((f, i) => {
+        const osc = this.audioCtx.createOscillator();
+        const gain = this.audioCtx.createGain();
+        osc.type = 'triangle';
+        osc.frequency.setValueAtTime(f, now + i * 0.025);
+        osc.frequency.exponentialRampToValueAtTime(f * 1.04, now + 0.14);
+
+        gain.gain.setValueAtTime(0.001, now + i * 0.025);
+        gain.gain.linearRampToValueAtTime(0.095, now + i * 0.025 + 0.015);
+        gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.18);
+
+        osc.connect(gain);
+        gain.connect(this.audioCtx.destination);
+        osc.start(now + i * 0.025);
+        osc.stop(now + 0.19);
+      });
     } else if (type === 'miss') {
-      // Suara rendah tumpul saat meleset
-      osc.type = 'sawtooth';
-      osc.frequency.setValueAtTime(150, now);
-      osc.frequency.exponentialRampToValueAtTime(65, now + 0.14);
-      gain.gain.setValueAtTime(0.09, now);
-      gain.gain.exponentialRampToValueAtTime(0.001, now + 0.15);
-      osc.connect(gain);
-      gain.connect(this.audioCtx.destination);
-      osc.start(now);
-      osc.stop(now + 0.16);
+      // Efek Miss Berat: Sub-bass drop + buzz dissonance
+      const subOsc = this.audioCtx.createOscillator();
+      const subGain = this.audioCtx.createGain();
+      subOsc.type = 'sawtooth';
+      subOsc.frequency.setValueAtTime(140, now);
+      subOsc.frequency.exponentialRampToValueAtTime(38, now + 0.22);
+
+      subGain.gain.setValueAtTime(0.14, now);
+      subGain.gain.exponentialRampToValueAtTime(0.0001, now + 0.23);
+
+      subOsc.connect(subGain);
+      subGain.connect(this.audioCtx.destination);
+      subOsc.start(now);
+      subOsc.stop(now + 0.24);
+
+      const buzzOsc = this.audioCtx.createOscillator();
+      const buzzGain = this.audioCtx.createGain();
+      buzzOsc.type = 'square';
+      buzzOsc.frequency.setValueAtTime(92, now);
+      buzzOsc.frequency.linearRampToValueAtTime(55, now + 0.18);
+
+      buzzGain.gain.setValueAtTime(0.06, now);
+      buzzGain.gain.exponentialRampToValueAtTime(0.0001, now + 0.19);
+
+      buzzOsc.connect(buzzGain);
+      buzzGain.connect(this.audioCtx.destination);
+      buzzOsc.start(now);
+      buzzOsc.stop(now + 0.2);
     } else {
-      // Suara tap netral untuk Good / Bad
+      // Tap bersih untuk Good / Bad
+      const osc = this.audioCtx.createOscillator();
+      const gain = this.audioCtx.createGain();
       osc.type = 'sine';
-      osc.frequency.setValueAtTime(580, now);
-      osc.frequency.exponentialRampToValueAtTime(300, now + 0.045);
-      gain.gain.setValueAtTime(0.055, now);
-      gain.gain.exponentialRampToValueAtTime(0.001, now + 0.05);
+      osc.frequency.setValueAtTime(620, now);
+      osc.frequency.exponentialRampToValueAtTime(310, now + 0.05);
+
+      gain.gain.setValueAtTime(0.065, now);
+      gain.gain.exponentialRampToValueAtTime(0.001, now + 0.055);
+
       osc.connect(gain);
       gain.connect(this.audioCtx.destination);
       osc.start(now);
-      osc.stop(now + 0.055);
+      osc.stop(now + 0.06);
     }
   }
 
@@ -755,18 +861,62 @@ class RhythmEngine {
     }
 
     if (isBeat) {
-      this.lastSpawnTime = now;
       const lane1 = Math.floor(Math.random() * 4);
-      this.notes.push({ lane: lane1, y: -30, hit: false });
+      const roll = Math.random();
 
-      if (Math.random() < levelCfg.doubleChance) {
-        let lane2 = (lane1 + 1 + Math.floor(Math.random() * 3)) % 4;
-        this.notes.push({ lane: lane2, y: -30, hit: false });
+      if (roll < levelCfg.holdChance) {
+        // 1. NOTE HOLD (Panjang)
+        const holdLength = 120 + Math.random() * 95;
+        this.notes.push({
+          type: 'hold',
+          lane: lane1,
+          y: -30,
+          length: holdLength,
+          holding: false,
+          completed: false,
+          hit: false,
+          tickAccum: 0
+        });
+        // Tambah jeda cooldown agar tidak bertabrakan dengan ekor hold
+        this.lastSpawnTime = now + (holdLength / levelCfg.speed) * 650;
+      } else if (roll < levelCfg.holdChance + levelCfg.slideChance) {
+        // 2. NOTE SLIDE (Geser Kiri/Kanan)
+        let dir = Math.random() < 0.5 ? -1 : 1;
+        if (lane1 === 0) dir = 1;
+        if (lane1 === 3) dir = -1;
+
+        this.notes.push({
+          type: 'slide',
+          lane: lane1,
+          y: -30,
+          slideDir: dir, // -1 = geser kiri, 1 = geser kanan
+          hit: false
+        });
+        this.lastSpawnTime = now;
+      } else {
+        // 3. NOTE TAP (Biasa)
+        this.notes.push({
+          type: 'tap',
+          lane: lane1,
+          y: -30,
+          hit: false
+        });
+
+        if (Math.random() < levelCfg.doubleChance) {
+          const lane2 = (lane1 + 1 + Math.floor(Math.random() * 3)) % 4;
+          this.notes.push({
+            type: 'tap',
+            lane: lane2,
+            y: -30,
+            hit: false
+          });
+        }
+        this.lastSpawnTime = now;
       }
     }
   }
 
-  handleLaneHit(lane) {
+  handleLaneDown(lane) {
     this.laneFlashes[lane] = 1.0;
     this.padPressScale[lane] = 0.86;
 
@@ -777,7 +927,7 @@ class RhythmEngine {
     let minDiff = Infinity;
 
     for (const note of this.notes) {
-      if (note.lane === lane && !note.hit) {
+      if (note.lane === lane && !note.hit && !note.holding) {
         const diff = Math.abs(note.y - targetY);
         if (diff < minDiff) {
           minDiff = diff;
@@ -786,64 +936,141 @@ class RhythmEngine {
       }
     }
 
-    if (closestNote && minDiff <= 105) {
-      closestNote.hit = true;
+    if (!closestNote || minDiff > 105) return null;
+
+    // Jika Note Slide disentuh, tandai siap digeser (juga bisa langsung terpicu saat digeser)
+    if (closestNote.type === 'slide') {
+      closestNote.touched = true;
+      return closestNote;
+    }
+
+    // Jika Note Hold disentuh, mulai status menahan (holding)
+    if (closestNote.type === 'hold') {
+      closestNote.holding = true;
       this.missStreak = 0;
+      this.evaluateTimingHit(minDiff, lane, 'HOLD!');
+      return closestNote;
+    }
 
-      if (minDiff <= 40) {
-        // PERFECT (Biru Cyan - Naik ke atas goyang-goyang + x25 membesar)
-        this.score += 100 + this.combo * 5;
-        this.combo++;
-        this.perfectStreak++;
-        this.perfectCount++;
+    // Note Tap biasa
+    closestNote.hit = true;
+    this.missStreak = 0;
+    this.evaluateTimingHit(minDiff, lane);
+    return closestNote;
+  }
 
-        let heal = 2;
-        if (this.combo % 10 === 0) heal += 5;
-        this.life = Math.min(100, this.life + heal);
+  handleSlideGesture(startLane, dir) {
+    const offsetPixels = (appState.audioOffset / 1000) * APP_CONFIG.levels[appState.selectedLevel].speed;
+    const targetY = this.hitLineY + offsetPixels;
 
-        const isMilestone = this.perfectStreak >= 25 && this.perfectStreak % 25 === 0;
-        const label = this.perfectStreak > 1 ? `PERFECT x${this.perfectStreak}` : 'PERFECT!';
-        this.showFeedback(label, isMilestone ? 'anim-perfect-milestone' : 'anim-perfect');
-        this.playSoundEffect('perfect');
+    for (const note of this.notes) {
+      if (note.type === 'slide' && !note.hit) {
+        const laneMatch = startLane === -1 || note.lane === startLane || note.touched;
+        const diff = Math.abs(note.y - targetY);
+        if (laneMatch && diff <= 115 && note.slideDir === dir) {
+          note.hit = true;
+          this.missStreak = 0;
+          const targetLane = Math.max(0, Math.min(3, note.lane + dir));
+          this.laneFlashes[targetLane] = 1.0;
 
-        this.shakeIntensity = isMilestone ? 6.5 : (appState.selectedLevel === 'extreme' ? 4 : 1.8);
-        if (navigator.vibrate) navigator.vibrate(isMilestone ? 30 : 15);
-      } else if (minDiff <= 74) {
-        // GOOD (Hijau - Naik mulus dari bawah ke atas)
-        this.score += 50 + this.combo * 2;
-        this.combo++;
-        this.perfectStreak = 0;
-        this.goodCount++;
-
-        if (this.combo % 10 === 0) {
+          this.score += 130 + this.combo * 5;
+          this.combo++;
+          this.perfectStreak++;
+          this.perfectCount++;
           this.life = Math.min(100, this.life + 3);
+
+          const isMilestone = this.perfectStreak >= 25 && this.perfectStreak % 25 === 0;
+          const label = isMilestone ? `PERFECT x${this.perfectStreak}` : 'SLIDE PERFECT!';
+          this.showFeedback(label, isMilestone ? 'anim-perfect-milestone' : 'anim-perfect');
+          this.playSoundEffect('slide');
+
+          if (this.combo > this.maxCombo) this.maxCombo = this.combo;
+          this.comboPulse = 1.35;
+          this.spawnHitEffects(targetLane);
+          this.updateScoreHUD();
+          this.updateLifeUI();
+          if (navigator.vibrate) navigator.vibrate(20);
+          return;
         }
+      }
+    }
+  }
 
-        this.showFeedback('GOOD', 'anim-good');
-        this.playSoundEffect('tap');
-      } else {
-        // BAD (Merah Muda - Goyang di tempat saja)
-        this.score += 15;
-        this.combo = 0;
-        this.perfectStreak = 0;
-        this.badCount++;
+  handleLaneRelease(lane) {
+    for (const note of this.notes) {
+      if (note.type === 'hold' && note.lane === lane && note.holding && !note.hit) {
+        const tailY = note.y - note.length;
+        // Jika dilepas sebelum ekor balok mendekati garis hit, anggap selesai sebagian
+        note.holding = false;
+        note.hit = true;
+        if (tailY >= this.hitLineY - 65) {
+          this.score += 80;
+          this.showFeedback('HOLD CLEAR!', 'anim-good');
+          this.playSoundEffect('perfect');
+          this.spawnHitEffects(lane);
+          this.updateScoreHUD();
+        }
+      }
+    }
+  }
 
-        this.showFeedback('BAD', 'anim-bad');
-        this.playSoundEffect('tap');
+  evaluateTimingHit(minDiff, lane, customPerfectText = null) {
+    if (minDiff <= 42) {
+      // PERFECT (Biru Cyan - Naik mulus ke atas, goyang HANYA saat kelipatan x25)
+      this.score += 100 + this.combo * 5;
+      this.combo++;
+      this.perfectStreak++;
+      this.perfectCount++;
+
+      let heal = 2;
+      if (this.combo % 10 === 0) heal += 5;
+      this.life = Math.min(100, this.life + heal);
+
+      const isMilestone = this.perfectStreak >= 25 && this.perfectStreak % 25 === 0;
+      const label = customPerfectText
+        ? customPerfectText
+        : (this.perfectStreak > 1 ? `PERFECT x${this.perfectStreak}` : 'PERFECT!');
+
+      this.showFeedback(label, isMilestone ? 'anim-perfect-milestone' : 'anim-perfect');
+      this.playSoundEffect('perfect');
+
+      this.shakeIntensity = isMilestone ? 6.5 : 1.5;
+      if (navigator.vibrate) navigator.vibrate(isMilestone ? 30 : 14);
+    } else if (minDiff <= 76) {
+      // GOOD (Hijau - Naik dari bawah ke atas)
+      this.score += 50 + this.combo * 2;
+      this.combo++;
+      this.perfectStreak = 0;
+      this.goodCount++;
+
+      if (this.combo % 10 === 0) {
+        this.life = Math.min(100, this.life + 3);
       }
 
-      if (this.combo > this.maxCombo) this.maxCombo = this.combo;
-      this.comboPulse = 1.35;
-      this.spawnHitEffects(lane);
-      this.updateScoreHUD();
-      this.updateLifeUI();
+      this.showFeedback('GOOD', 'anim-good');
+      this.playSoundEffect('tap');
+    } else {
+      // BAD (Merah Muda - Goyang di tempat saja)
+      this.score += 15;
+      this.combo = 0;
+      this.perfectStreak = 0;
+      this.badCount++;
+
+      this.showFeedback('BAD', 'anim-bad');
+      this.playSoundEffect('tap');
     }
+
+    if (this.combo > this.maxCombo) this.maxCombo = this.combo;
+    this.comboPulse = 1.35;
+    this.spawnHitEffects(lane);
+    this.updateScoreHUD();
+    this.updateLifeUI();
   }
 
   showFeedback(text, animClass) {
     const el = document.getElementById('hitFeedback');
     el.textContent = text;
-    el.className = 'hit-feedback'; // Reset semua kelas animasi
+    el.className = 'hit-feedback';
     void el.offsetWidth;
     el.classList.add(animClass);
   }
@@ -923,19 +1150,47 @@ class RhythmEngine {
       this.trySpawnBeatNote(timestamp, false);
     }
 
-    // Update Posisi Balok
+    // Update Posisi & Status Semua Jenis Balok (Tap, Hold, Slide)
     const levelCfg = APP_CONFIG.levels[appState.selectedLevel];
     for (const note of this.notes) {
-      if (!note.hit) {
-        note.y += levelCfg.speed * dt;
-        if (note.y > this.height + 24) {
+      if (note.hit) continue;
+
+      note.y += levelCfg.speed * dt;
+
+      if (note.type === 'hold' && note.holding) {
+        // Beri bonus skor & partikel kontinu selama balok ditahan
+        this.laneFlashes[note.lane] = 0.85;
+        this.padPressScale[note.lane] = 0.88;
+        note.tickAccum += dt;
+        if (note.tickAccum >= 0.08) {
+          note.tickAccum = 0;
+          this.score += 15;
+          this.updateScoreHUD();
+          this.spawnHitEffects(note.lane);
+        }
+
+        // Cek apakah ekor balok hold sudah selesai melewati garis hit
+        if (note.y - note.length >= this.hitLineY) {
+          note.holding = false;
+          note.hit = true;
+          this.score += 100;
+          this.life = Math.min(100, this.life + 3);
+          this.showFeedback('HOLD PERFECT!', 'anim-perfect');
+          this.playSoundEffect('perfect');
+          this.updateScoreHUD();
+          this.updateLifeUI();
+        }
+      } else {
+        // Cek apakah note terlewat (Miss)
+        const missThreshold = this.height + 24;
+        if (note.y > missThreshold) {
           note.hit = true;
           this.combo = 0;
           this.perfectStreak = 0;
           this.missCount++;
           this.missStreak++;
           this.comboPulse = 1.25;
-          this.shakeIntensity = 5;
+          this.shakeIntensity = 5.5;
 
           this.life = Math.max(0, this.life - levelCfg.missDamage);
           this.updateLifeUI();
@@ -1060,7 +1315,7 @@ class RhythmEngine {
       }
 
       if (i > 0) {
-        ctx.strokeStyle = 'rgba(255, 255, 255, 0.05)';
+        ctx.strokeStyle = 'rgba(255, 255, 255, 0.04)';
         ctx.lineWidth = 1;
         ctx.beginPath();
         ctx.moveTo(x, 0);
@@ -1069,7 +1324,7 @@ class RhythmEngine {
       }
     }
 
-    // 4. Tuts Tombol Bawah (Tactile Pads — Garis horizontal dihilangkan sesuai permintaan)
+    // 4. Tuts Tombol Bawah Tanpa Border (Lebih Bersih & Tidak Kaku)
     const keyLabels = ['D', 'F', 'J', 'K'];
     for (let i = 0; i < 4; i++) {
       const padW = laneW - 14;
@@ -1082,50 +1337,94 @@ class RhythmEngine {
       ctx.scale(this.padPressScale[i], this.padPressScale[i]);
 
       ctx.fillStyle = this.laneFlashes[i] > 0.15
-        ? `rgba(${levelRgb}, 0.35)`
-        : 'rgba(255, 255, 255, 0.04)';
-      ctx.strokeStyle = this.laneFlashes[i] > 0.15
-        ? '#ffffff'
-        : `rgba(${levelRgb}, 0.4)`;
-      ctx.lineWidth = 2;
+        ? `rgba(${levelRgb}, 0.38)`
+        : 'rgba(255, 255, 255, 0.05)';
 
       ctx.beginPath();
       ctx.roundRect(-padW / 2, -padH / 2, padW, padH, 14);
       ctx.fill();
-      ctx.stroke();
 
-      ctx.fillStyle = 'rgba(255, 255, 255, 0.25)';
+      ctx.fillStyle = 'rgba(255, 255, 255, 0.22)';
       ctx.font = 'bold 12px sans-serif';
       ctx.textAlign = 'center';
       ctx.fillText(keyLabels[i], 0, 4);
       ctx.restore();
     }
 
-    // 5. Gambar Balok Nada dengan Motion Trail & Kilau
+    // 5. Gambar Balok Nada (Tap, Hold Panjang, dan Slide Geser)
     for (const note of this.notes) {
       const x = note.lane * laneW + 9;
       const w = laneW - 18;
       const h = 30;
 
-      const trailGrad = ctx.createLinearGradient(0, note.y - 75, 0, note.y);
-      trailGrad.addColorStop(0, `rgba(${levelRgb}, 0)`);
-      trailGrad.addColorStop(1, `rgba(${levelRgb}, 0.28)`);
-      ctx.fillStyle = trailGrad;
-      ctx.fillRect(x + 4, note.y - 75, w - 8, 75);
+      if (note.type === 'hold') {
+        // Batang Hold Panjang
+        const headY = note.holding ? this.hitLineY : note.y;
+        const tailY = note.y - note.length;
+        const bodyH = Math.max(0, headY - tailY);
 
-      ctx.fillStyle = levelColor;
-      ctx.shadowColor = levelColor;
-      ctx.shadowBlur = 14;
+        ctx.fillStyle = `rgba(${levelRgb}, 0.35)`;
+        ctx.beginPath();
+        ctx.roundRect(x + 6, tailY, w - 12, bodyH, 10);
+        ctx.fill();
 
-      ctx.beginPath();
-      ctx.roundRect(x, note.y - h / 2, w, h, 10);
-      ctx.fill();
-      ctx.shadowBlur = 0;
+        // Garis inti bercahaya di tengah batang hold
+        ctx.fillStyle = `rgba(255, 255, 255, 0.35)`;
+        ctx.fillRect(x + w / 2 - 2, tailY + 6, 4, Math.max(0, bodyH - 12));
 
-      ctx.fillStyle = 'rgba(255, 255, 255, 0.65)';
-      ctx.beginPath();
-      ctx.roundRect(x + 8, note.y - 3, w - 16, 6, 3);
-      ctx.fill();
+        // Kepala Balok Hold
+        ctx.fillStyle = levelColor;
+        ctx.shadowColor = levelColor;
+        ctx.shadowBlur = 14;
+        ctx.beginPath();
+        ctx.roundRect(x, headY - h / 2, w, h, 10);
+        ctx.fill();
+        ctx.shadowBlur = 0;
+
+        ctx.fillStyle = '#0b0d14';
+        ctx.font = '900 10px sans-serif';
+        ctx.textAlign = 'center';
+        ctx.fillText('HOLD', x + w / 2, headY + 3.5);
+      } else if (note.type === 'slide') {
+        // Balok Slide Geser (Warna Emas / Kuning Cerah dengan Panah Arah)
+        const slideColor = '#facc15';
+        ctx.fillStyle = slideColor;
+        ctx.shadowColor = slideColor;
+        ctx.shadowBlur = 16;
+
+        ctx.beginPath();
+        ctx.roundRect(x, note.y - h / 2, w, h, 10);
+        ctx.fill();
+        ctx.shadowBlur = 0;
+
+        // Panah arah geser (◀◀ atau ▶▶)
+        ctx.fillStyle = '#0b0d14';
+        ctx.font = '900 13px sans-serif';
+        ctx.textAlign = 'center';
+        const arrow = note.slideDir === 1 ? '▶▶' : '◀◀';
+        ctx.fillText(arrow, x + w / 2, note.y + 4.5);
+      } else {
+        // Note Tap Biasa
+        const trailGrad = ctx.createLinearGradient(0, note.y - 75, 0, note.y);
+        trailGrad.addColorStop(0, `rgba(${levelRgb}, 0)`);
+        trailGrad.addColorStop(1, `rgba(${levelRgb}, 0.28)`);
+        ctx.fillStyle = trailGrad;
+        ctx.fillRect(x + 4, note.y - 75, w - 8, 75);
+
+        ctx.fillStyle = levelColor;
+        ctx.shadowColor = levelColor;
+        ctx.shadowBlur = 14;
+
+        ctx.beginPath();
+        ctx.roundRect(x, note.y - h / 2, w, h, 10);
+        ctx.fill();
+        ctx.shadowBlur = 0;
+
+        ctx.fillStyle = 'rgba(255, 255, 255, 0.65)';
+        ctx.beginPath();
+        ctx.roundRect(x + 8, note.y - 3, w - 16, 6, 3);
+        ctx.fill();
+      }
     }
 
     // 6. Shockwave Rings
@@ -1152,11 +1451,12 @@ class RhythmEngine {
   finishGame(isGameOver = false) {
     this.stop();
 
+    const levelCfg = APP_CONFIG.levels[appState.selectedLevel];
     let highScore = this.score;
     if (appState.selectedSource === 'local') {
       highScore = saveLocalSongRecord(appState.selectedSongTitle, appState.selectedLevel, this.score);
     } else {
-      const key = `builtin_hs_${appState.selectedSongId}`;
+      const key = `builtin_hs_${appState.selectedSongId}_${appState.selectedLevel}`;
       const prev = Number(localStorage.getItem(APP_CONFIG.storageKeyPrefix + key) || 0);
       highScore = Math.max(prev, this.score);
       localStorage.setItem(APP_CONFIG.storageKeyPrefix + key, String(highScore));
@@ -1197,6 +1497,7 @@ class RhythmEngine {
     }
 
     document.getElementById('finalScore').textContent = this.score.toLocaleString('id-ID');
+    document.getElementById('finalHighScoreLabel').textContent = `High Score (${levelCfg.short})`;
     document.getElementById('finalHighScore').textContent = highScore.toLocaleString('id-ID');
     document.getElementById('finalMaxCombo').textContent = `${this.maxCombo}x`;
     document.getElementById('finalPerfect').textContent = this.perfectCount;
@@ -1210,6 +1511,8 @@ class RhythmEngine {
   stop() {
     this.isRunning = false;
     this.isPaused = false;
+    this.activeTouches.clear();
+    this.activeKeys.clear();
     if (this.animFrameId) cancelAnimationFrame(this.animFrameId);
     if (this.synthInterval) clearInterval(this.synthInterval);
     if (this.audioEl) {
