@@ -10,6 +10,7 @@
   --color-normal: #34d399;
   --color-hard: #fb923c;
   --color-extreme: #f43f5e;
+  --color-pink: #f472b6;
   --active-theme: #38bdf8;
 }
 
@@ -306,12 +307,12 @@ body {
   font-weight: 800;
 }
 
-/* Upload Local Box (Rapi & Horizontal) */
+/* Upload Local Box */
 .upload-box {
   display: flex;
   align-items: center;
   gap: 12px;
-  padding: 14px;
+  padding: 13px 14px;
   border: 1.5px dashed rgba(255, 255, 255, 0.2);
   border-radius: 14px;
   background: rgba(11, 13, 20, 0.6);
@@ -325,7 +326,7 @@ body {
 }
 
 .upload-icon {
-  font-size: 1.6rem;
+  font-size: 1.5rem;
   flex-shrink: 0;
 }
 
@@ -369,7 +370,7 @@ body {
 }
 
 .history-header small {
-  font-size: 0.66rem;
+  font-size: 0.65rem;
   color: var(--text-muted);
 }
 
@@ -377,7 +378,7 @@ body {
   display: flex;
   flex-direction: column;
   gap: 6px;
-  max-height: 145px;
+  max-height: 150px;
   overflow-y: auto;
 }
 
@@ -388,13 +389,14 @@ body {
   padding: 9px 11px;
   border-radius: 10px;
   background: rgba(11, 13, 20, 0.65);
-  border: 1px solid var(--border-color);
+  border: 1.5px solid var(--border-color);
   cursor: pointer;
   transition: 0.15s;
 }
 
-.history-item:hover {
+.history-item.active-history {
   border-color: var(--active-theme);
+  background: rgba(56, 189, 248, 0.08);
 }
 
 .history-left {
@@ -422,7 +424,7 @@ body {
 
 .history-right small {
   display: block;
-  font-size: 0.62rem;
+  font-size: 0.6rem;
   color: var(--text-muted);
 }
 
@@ -566,12 +568,12 @@ body {
 }
 
 .btn-small {
-  width: 34px;
-  height: 34px;
+  width: 36px;
+  height: 36px;
   border-radius: 10px;
-  background: rgba(255, 255, 255, 0.06);
+  background: rgba(255, 255, 255, 0.08);
   color: var(--text-primary);
-  font-size: 0.9rem;
+  font-size: 0.95rem;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -705,67 +707,116 @@ body {
 .countdown-overlay {
   position: absolute;
   inset: 0;
-  background: rgba(9, 11, 16, 0.75);
-  backdrop-filter: blur(4px);
+  background: rgba(9, 11, 16, 0.78);
+  backdrop-filter: blur(5px);
   display: flex;
   align-items: center;
   justify-content: center;
-  z-index: 10;
+  z-index: 15;
 }
 
 .countdown-overlay span {
-  font-size: 3.5rem;
+  font-size: 4rem;
   font-weight: 900;
   color: var(--active-theme);
-  text-shadow: 0 0 25px var(--active-theme);
-  animation: popScale 0.6s ease-out;
+  text-shadow: 0 0 28px var(--active-theme);
+  animation: popScale 0.55s ease-out;
 }
 
 @keyframes popScale {
-  0% { transform: scale(0.5); opacity: 0; }
-  60% { transform: scale(1.15); opacity: 1; }
+  0% { transform: scale(0.45); opacity: 0; }
+  60% { transform: scale(1.18); opacity: 1; }
   100% { transform: scale(1); opacity: 1; }
 }
 
-/* Feedback Teks Melayang (Lebih Dinamis & Tidak Kaku) */
+/* --- 4 TIER FEEDBACK ANIMASI DINAMIS --- */
 .hit-feedback {
   position: absolute;
-  top: 46%;
+  top: 47%;
   left: 50%;
-  transform: translate(-50%, -50%) scale(0.8);
-  font-size: 1.5rem;
+  transform: translate(-50%, -50%);
+  font-size: 1.55rem;
   font-weight: 900;
   letter-spacing: 1px;
   pointer-events: none;
   opacity: 0;
   text-shadow: 0 4px 18px rgba(0, 0, 0, 0.95);
-  z-index: 5;
+  z-index: 6;
+  white-space: nowrap;
 }
 
-.hit-feedback.show {
-  animation: popFeedback 0.34s cubic-bezier(0.18, 0.89, 0.32, 1.28) forwards;
+/* 1. MISS (Merah): Goyang-goyang lalu jatuh turun ke bawah menghilang */
+.hit-feedback.anim-miss {
+  color: #f43f5e;
+  animation: animMissDrop 0.48s ease-in forwards;
 }
 
-.hit-feedback.miss-anim {
-  animation: shakeMiss 0.36s ease-out forwards;
-}
-
-@keyframes popFeedback {
-  0% { opacity: 0; transform: translate(-50%, -40%) scale(0.75); }
-  50% { opacity: 1; transform: translate(-50%, -68%) scale(1.15); }
-  100% { opacity: 0; transform: translate(-50%, -82%) scale(1); }
-}
-
-@keyframes shakeMiss {
+@keyframes animMissDrop {
   0% { opacity: 1; transform: translate(-50%, -50%) rotate(0deg); }
-  25% { opacity: 1; transform: translate(-56%, -52%) rotate(-5deg); }
-  50% { opacity: 1; transform: translate(-44%, -54%) rotate(5deg); }
-  75% { opacity: 1; transform: translate(-52%, -56%) rotate(-3deg); }
-  100% { opacity: 0; transform: translate(-50%, -64%) rotate(0deg); }
+  15% { opacity: 1; transform: translate(-58%, -50%) rotate(-7deg); }
+  30% { opacity: 1; transform: translate(-42%, -50%) rotate(7deg); }
+  45% { opacity: 1; transform: translate(-55%, -48%) rotate(-5deg); }
+  60% { opacity: 0.95; transform: translate(-46%, -45%) rotate(4deg); }
+  100% { opacity: 0; transform: translate(-50%, 35%) rotate(0deg) scale(0.85); }
 }
 
-/* Result Modal */
-.result-box {
+/* 2. BAD (Merah Muda): Goyang-goyang di tempat saja */
+.hit-feedback.anim-bad {
+  color: #f472b6;
+  animation: animBadWobble 0.38s ease-out forwards;
+}
+
+@keyframes animBadWobble {
+  0% { opacity: 0.4; transform: translate(-50%, -50%) scale(0.9); }
+  20% { opacity: 1; transform: translate(-58%, -50%) rotate(-6deg) scale(1.05); }
+  45% { opacity: 1; transform: translate(-42%, -50%) rotate(6deg) scale(1.05); }
+  70% { opacity: 1; transform: translate(-54%, -50%) rotate(-3deg); }
+  100% { opacity: 0; transform: translate(-50%, -50%) rotate(0deg) scale(0.95); }
+}
+
+/* 3. GOOD (Hijau): Naik mulus dari bawah ke atas */
+.hit-feedback.anim-good {
+  color: #34d399;
+  animation: animGoodRise 0.38s ease-out forwards;
+}
+
+@keyframes animGoodRise {
+  0% { opacity: 0; transform: translate(-50%, -25%) scale(0.88); }
+  30% { opacity: 1; transform: translate(-50%, -55%) scale(1.05); }
+  100% { opacity: 0; transform: translate(-50%, -95%) scale(1); }
+}
+
+/* 4. PERFECT (Biru Cyan): Naik ke atas sambil goyang-goyang */
+.hit-feedback.anim-perfect {
+  color: #38bdf8;
+  animation: animPerfectRiseWobble 0.42s ease-out forwards;
+}
+
+@keyframes animPerfectRiseWobble {
+  0% { opacity: 0; transform: translate(-50%, -30%) scale(0.85) rotate(0deg); }
+  25% { opacity: 1; transform: translate(-55%, -55%) scale(1.12) rotate(-5deg); }
+  50% { opacity: 1; transform: translate(-45%, -72%) scale(1.14) rotate(5deg); }
+  75% { opacity: 0.9; transform: translate(-53%, -88%) scale(1.08) rotate(-3deg); }
+  100% { opacity: 0; transform: translate(-50%, -105%) scale(1) rotate(0deg); }
+}
+
+/* Milestone PERFECT x25, x50, x75... (Angka diperbesar & menyala) */
+.hit-feedback.anim-perfect-milestone {
+  color: #38bdf8;
+  font-size: 2.25rem;
+  text-shadow: 0 0 22px rgba(56, 189, 248, 0.9), 0 4px 18px rgba(0, 0, 0, 0.95);
+  animation: animMilestoneBurst 0.55s cubic-bezier(0.18, 0.89, 0.32, 1.28) forwards;
+}
+
+@keyframes animMilestoneBurst {
+  0% { opacity: 0; transform: translate(-50%, -35%) scale(0.5); }
+  30% { opacity: 1; transform: translate(-55%, -62%) scale(1.32) rotate(-5deg); }
+  60% { opacity: 1; transform: translate(-45%, -80%) scale(1.25) rotate(5deg); }
+  100% { opacity: 0; transform: translate(-50%, -110%) scale(1.05) rotate(0deg); }
+}
+
+/* Result & Pause Modal */
+.result-box, .pause-box {
   text-align: center;
 }
 
@@ -807,16 +858,21 @@ body {
 
 .stat-item span {
   display: block;
-  font-size: 0.72rem;
+  font-size: 0.7rem;
   color: var(--text-muted);
 }
 
 .stat-item strong {
-  font-size: 1.05rem;
+  font-size: 1.02rem;
+}
+
+.stat-breakdown {
+  font-size: 0.88rem !important;
 }
 
 .text-cyan { color: var(--color-easy); }
 .text-green { color: var(--color-normal); }
+.text-pink { color: var(--color-pink); }
 .text-rose { color: var(--color-extreme); }
 
 .result-actions {
