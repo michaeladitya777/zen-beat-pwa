@@ -22,5 +22,13 @@
     "src": "assets/audio/songs/Tinsel-Rush-2.mp3",
     "icon": "🌃",
     "color": "c-amber"
+  },
+  {
+    "id": "theme-menu",
+    "title": "Theme Menu",
+    "subtitle": "Server Audio • Auto Sync",
+    "src": "assets/audio/songs/theme-menu.mp3",
+    "icon": "☕",
+    "color": "c-cyan"
   }
 ]
