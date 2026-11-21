@@ -81,7 +81,7 @@
           </div>
         </div>
 
-        <!-- Tab Upload Lagu Lokal + Riwayat High Score -->
+        <!-- Tab Upload Lagu Lokal + Riwayat High Score Per Level -->
         <div id="localTab" class="tab-content">
           <label for="audioFileInput" class="upload-box" id="uploadBoxLabel">
             <div class="upload-icon">🎵</div>
@@ -90,14 +90,13 @@
               <span>Durasi 30 detik – 10 menit (.MP3, .WAV, .M4A)</span>
             </div>
           </label>
-          <!-- Ekstensi eksplisit mencegah Android memunculkan picker ganda atas-bawah -->
           <input type="file" id="audioFileInput" accept=".mp3,.wav,.ogg,.m4a,.aac,.flac" hidden />
 
-          <!-- Kolom Riwayat Lagu Lokal & Highest Score -->
+          <!-- Kolom Riwayat Lagu Lokal & Highest Score Per Level -->
           <div id="localHistoryWrapper" class="local-history-wrapper hidden">
             <div class="history-header">
-              <span>Riwayat & Rekor Lagu Lokal</span>
-              <small>Ketuk untuk pilih & dengarkan preview</small>
+              <span>Riwayat & Rekor Per Level</span>
+              <small>Ketuk lagu untuk pilih & preview</small>
             </div>
             <div id="localHistoryList" class="history-list"></div>
           </div>
@@ -192,7 +191,7 @@
           <span id="countdownText">3</span>
         </div>
 
-        <!-- Feedback Teks Melayang (MISS / BAD / GOOD / PERFECT x25!) -->
+        <!-- Feedback Teks Melayang -->
         <div id="hitFeedback" class="hit-feedback"></div>
       </div>
     </section>
@@ -221,7 +220,7 @@
             <strong id="finalScore">0</strong>
           </div>
           <div class="stat-item">
-            <span>Highest Score</span>
+            <span id="finalHighScoreLabel">Highest Score</span>
             <strong id="finalHighScore" class="text-cyan">0</strong>
           </div>
           <div class="stat-item">
