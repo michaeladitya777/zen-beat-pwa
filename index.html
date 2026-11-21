@@ -83,20 +83,21 @@
 
         <!-- Tab Upload Lagu Lokal + Riwayat High Score -->
         <div id="localTab" class="tab-content">
-          <label for="audioFileInput" class="upload-box">
+          <label for="audioFileInput" class="upload-box" id="uploadBoxLabel">
             <div class="upload-icon">🎵</div>
             <div class="upload-text">
               <strong id="uploadedFileName">Pilih File Lagu dari HP / Laptop</strong>
-              <span>Format .MP3, .WAV, .OGG, .M4A • 100% Offline</span>
+              <span>Durasi 30 detik – 10 menit (.MP3, .WAV, .M4A)</span>
             </div>
           </label>
-          <input type="file" id="audioFileInput" accept="audio/*,.mp3,.wav,.ogg,.m4a" hidden />
+          <!-- Ekstensi eksplisit mencegah Android memunculkan picker ganda atas-bawah -->
+          <input type="file" id="audioFileInput" accept=".mp3,.wav,.ogg,.m4a,.aac,.flac" hidden />
 
           <!-- Kolom Riwayat Lagu Lokal & Highest Score -->
           <div id="localHistoryWrapper" class="local-history-wrapper hidden">
             <div class="history-header">
               <span>Riwayat & Rekor Lagu Lokal</span>
-              <small>Pilih ulang file jika ingin main lagi</small>
+              <small>Ketuk untuk pilih & dengarkan preview</small>
             </div>
             <div id="localHistoryList" class="history-list"></div>
           </div>
@@ -158,7 +159,7 @@
     <!-- Layar Arena Game -->
     <section id="gameScreen" class="screen">
       <div class="game-hud">
-        <button id="backToMenuBtn" class="btn-small">✕</button>
+        <button id="pauseGameBtn" class="btn-small" title="Jeda Permainan">⏸</button>
         <div class="hud-info">
           <span id="hudSongTitle">Judul Lagu</span>
           <span id="hudLevelName" class="hud-badge">Mode Santuy</span>
@@ -186,15 +187,26 @@
       <div class="canvas-wrapper" id="canvasWrapper">
         <canvas id="gameCanvas"></canvas>
 
-        <!-- Hitung Mundur Sebelum Mulai -->
+        <!-- Hitung Mundur Sebelum Mulai / Lanjut dari Pause -->
         <div id="countdownOverlay" class="countdown-overlay hidden">
           <span id="countdownText">3</span>
         </div>
 
-        <!-- Feedback Teks Melayang (PERFECT / GOOD / MISS x2) -->
+        <!-- Feedback Teks Melayang (MISS / BAD / GOOD / PERFECT x25!) -->
         <div id="hitFeedback" class="hit-feedback"></div>
       </div>
     </section>
+
+    <!-- Modal Pause -->
+    <div id="pauseModal" class="modal hidden">
+      <div class="modal-content pause-box">
+        <div class="lock-icon">⏸️</div>
+        <h3>Permainan Dijeda</h3>
+        <p>Tarik napas sejenak sebelum lanjut mengetuk irama.</p>
+        <button id="resumeGameBtn" class="btn-primary full-width">Lanjutkan ▶</button>
+        <button id="quitToMenuBtn" class="btn-secondary full-width">Keluar ke Menu</button>
+      </div>
+    </div>
 
     <!-- Modal Hasil Akhir / Game Over -->
     <div id="resultModal" class="modal hidden">
@@ -217,10 +229,11 @@
             <strong id="finalMaxCombo">0x</strong>
           </div>
           <div class="stat-item">
-            <span>Perfect / Good / Miss</span>
-            <strong>
+            <span>Perfect / Good / Bad / Miss</span>
+            <strong class="stat-breakdown">
               <span id="finalPerfect" class="text-cyan">0</span> /
               <span id="finalGood" class="text-green">0</span> /
+              <span id="finalBad" class="text-pink">0</span> /
               <span id="finalMiss" class="text-rose">0</span>
             </strong>
           </div>
