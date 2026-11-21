@@ -122,26 +122,66 @@
       </div>
     </main>
 
-    <!-- Layar Arena Game (Placeholder untuk Tahap 2) -->
+    <!-- Layar Arena Game (Tahap 2: 4 Jalur Ritme Interaktif) -->
     <section id="gameScreen" class="screen">
       <div class="game-hud">
-        <button id="backToMenuBtn" class="btn-small">← Kembali</button>
+        <button id="backToMenuBtn" class="btn-small">⏹ Berhenti</button>
         <div class="hud-info">
           <span id="hudSongTitle">Judul Lagu</span>
           <span id="hudLevelName" class="hud-badge">Mode Santuy</span>
         </div>
-        <div class="hud-score">Skor: <strong id="scoreDisplay">0</strong></div>
+        <div class="hud-score">
+          <small>Combo: <strong id="comboDisplay">0</strong>x</small>
+          <div>Skor: <strong id="scoreDisplay">0</strong></div>
+        </div>
+      </div>
+
+      <!-- Progress Bar Durasi Lagu -->
+      <div class="progress-track">
+        <div id="songProgressBar" class="progress-fill"></div>
       </div>
 
       <div class="canvas-wrapper">
         <canvas id="gameCanvas"></canvas>
-        <div class="stage-placeholder">
-          <p><strong>Fondasi Tahap 1 Siap!</strong></p>
-          <p id="selectedSummary"></p>
-          <small>Mesin Auto-Beat & 4 Jalur Ketukan akan dipasang di Tahap 2.</small>
+        <!-- Feedback Teks Melayang (PERFECT / GOOD / MISS) -->
+        <div id="hitFeedback" class="hit-feedback"></div>
+      </div>
+
+      <p class="controls-hint">Sentuh jalur di layar HP atau tekan tombol <strong>D • F • J • K</strong> di keyboard</p>
+    </section>
+
+    <!-- Modal Hasil Akhir Permainan -->
+    <div id="resultModal" class="modal hidden">
+      <div class="modal-content result-box">
+        <div id="resultRank" class="result-rank">S</div>
+        <h3 id="resultTitle">Kerja Bagus!</h3>
+        <p id="resultSubtitle">Pikiranmu sudah lebih segar sekarang.</p>
+
+        <div class="stats-grid">
+          <div class="stat-item">
+            <span>Total Skor</span>
+            <strong id="finalScore">0</strong>
+          </div>
+          <div class="stat-item">
+            <span>Max Combo</span>
+            <strong id="finalMaxCombo">0</strong>
+          </div>
+          <div class="stat-item">
+            <span>Perfect</span>
+            <strong id="finalPerfect" class="text-cyan">0</strong>
+          </div>
+          <div class="stat-item">
+            <span>Good / Miss</span>
+            <strong><span id="finalGood" class="text-green">0</span> / <span id="finalMiss" class="text-rose">0</span></strong>
+          </div>
+        </div>
+
+        <div class="result-actions">
+          <button id="playAgainBtn" class="btn-primary">Main Lagi ↻</button>
+          <button id="resultMenuBtn" class="btn-secondary">Pilih Lagu Lain</button>
         </div>
       </div>
-    </section>
+    </div>
 
     <!-- Modal Kalibrasi Delay -->
     <div id="settingsModal" class="modal hidden">
@@ -159,7 +199,7 @@
       </div>
     </div>
 
-    <!-- Modal Paywall Trial Habis (Siap dihubungkan ke Cloudflare di Tahap 3 & 4) -->
+    <!-- Modal Paywall Trial Habis -->
     <div id="paywallModal" class="modal hidden">
       <div class="modal-content paywall-box">
         <div class="lock-icon">🔒</div>
