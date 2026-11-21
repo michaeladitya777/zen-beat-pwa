@@ -1,0 +1,180 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <meta name="theme-color" content="#12141d" />
+  <title>ZenBeat — Game Musik Pelepas Penat</title>
+  <link rel="manifest" href="manifest.json" />
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <div class="app-container">
+    <!-- Header & Status Trial -->
+    <header class="app-header">
+      <div class="brand">
+        <h1>Zen<span>Beat</span></h1>
+        <p class="subtitle">Ketuk irama, buang penatmu</p>
+      </div>
+      <div class="header-actions">
+        <div id="trialBadge" class="trial-badge">Memuat status...</div>
+        <button id="installBtn" class="btn-install hidden" title="Install Aplikasi">
+          + Install App
+        </button>
+      </div>
+    </header>
+
+    <!-- Layar Menu Utama -->
+    <main id="menuScreen" class="screen active">
+      <!-- Bagian 1: Pilih Sumber Lagu -->
+      <section class="card song-section">
+        <h2>1. Pilih Musik</h2>
+        
+        <div class="song-tabs">
+          <button class="tab-btn active" data-tab="builtin">Lagu Bawaan</button>
+          <button class="tab-btn" data-tab="local">Lagu Sendiri (MP3/WAV)</button>
+        </div>
+
+        <!-- Tab Lagu Bawaan -->
+        <div id="builtinTab" class="tab-content active">
+          <div class="song-list" id="builtinSongList">
+            <div class="song-item selected" data-song="lofi-chill" data-bpm="95">
+              <div class="song-info">
+                <strong>Hujan Sore di Kantor</strong>
+                <span>Lo-Fi Instrumental • 95 BPM</span>
+              </div>
+              <span class="badge-check">Dipilih</span>
+            </div>
+            <div class="song-item" data-song="night-drive" data-bpm="115">
+              <div class="song-info">
+                <strong>Pulang Tenggo</strong>
+                <span>Chill Synthwave • 115 BPM</span>
+              </div>
+              <span class="badge-check">Pilih</span>
+            </div>
+            <div class="song-item" data-song="coffee-rush" data-bpm="135">
+              <div class="song-info">
+                <strong>Kopi Sachet Tengah Malam</strong>
+                <span>Upbeat Electronic • 135 BPM</span>
+              </div>
+              <span class="badge-check">Pilih</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Tab Upload Lagu Lokal -->
+        <div id="localTab" class="tab-content">
+          <label for="audioFileInput" class="upload-box">
+            <div class="upload-icon">🎵</div>
+            <strong id="uploadedFileName">Ketuk untuk pilih file lagu dari HP/Laptop</strong>
+            <span>Mendukung format .MP3, .WAV, .OGG, .M4A (100% Offline)</span>
+          </label>
+          <input type="file" id="audioFileInput" accept="audio/*" hidden />
+        </div>
+      </section>
+
+      <!-- Bagian 2: Pilih Tingkat Kesulitan (4 Level) -->
+      <section class="card level-section">
+        <h2>2. Pilih Tingkat Kewarasan</h2>
+        <div class="level-grid">
+          <button class="level-card easy selected" data-level="easy">
+            <div class="level-header">
+              <span class="level-tag">EASY</span>
+              <span class="level-dot"></span>
+            </div>
+            <h3>Mode Santuy</h3>
+            <p>"Baru pulang, nyawa belum kumpul."</p>
+          </button>
+
+          <button class="level-card normal" data-level="normal">
+            <div class="level-header">
+              <span class="level-tag">NORMAL</span>
+              <span class="level-dot"></span>
+            </div>
+            <h3>Mode Biasa Aja</h3>
+            <p>"Standar UMR, yang penting jalan."</p>
+          </button>
+
+          <button class="level-card hard" data-level="hard">
+            <div class="level-header">
+              <span class="level-tag">HARD</span>
+              <span class="level-dot"></span>
+            </div>
+            <h3>Mode Sistem Kebut Semalam (SKS)</h3>
+            <p>"Besok pagi dikumpulin, jempol jangan kendor!"</p>
+          </button>
+
+          <button class="level-card extreme" data-level="extreme">
+            <div class="level-header">
+              <span class="level-tag">EXTREME</span>
+              <span class="level-dot"></span>
+            </div>
+            <h3>Mode WNI</h3>
+            <p>"Mental baja. Badai cobaan datang bersamaan!"</p>
+          </button>
+        </div>
+      </section>
+
+      <!-- Tombol Mulai & Pengaturan Delay -->
+      <div class="bottom-bar">
+        <button id="openSettingsBtn" class="btn-secondary">⚙️ Kalibrasi Delay</button>
+        <button id="startGameBtn" class="btn-primary">MULAI MAIN ▶</button>
+      </div>
+    </main>
+
+    <!-- Layar Arena Game (Placeholder untuk Tahap 2) -->
+    <section id="gameScreen" class="screen">
+      <div class="game-hud">
+        <button id="backToMenuBtn" class="btn-small">← Kembali</button>
+        <div class="hud-info">
+          <span id="hudSongTitle">Judul Lagu</span>
+          <span id="hudLevelName" class="hud-badge">Mode Santuy</span>
+        </div>
+        <div class="hud-score">Skor: <strong id="scoreDisplay">0</strong></div>
+      </div>
+
+      <div class="canvas-wrapper">
+        <canvas id="gameCanvas"></canvas>
+        <div class="stage-placeholder">
+          <p><strong>Fondasi Tahap 1 Siap!</strong></p>
+          <p id="selectedSummary"></p>
+          <small>Mesin Auto-Beat & 4 Jalur Ketukan akan dipasang di Tahap 2.</small>
+        </div>
+      </div>
+    </section>
+
+    <!-- Modal Kalibrasi Delay -->
+    <div id="settingsModal" class="modal hidden">
+      <div class="modal-content">
+        <h3>Kalibrasi Sentuhan (Audio Offset)</h3>
+        <p>Geser jika ketukan terasa terlalu cepat atau lambat di HP kamu.</p>
+        <div class="slider-group">
+          <input type="range" id="offsetSlider" min="-200" max="200" value="0" step="10" />
+          <div class="slider-value"><span id="offsetValue">0</span> ms</div>
+        </div>
+        <div class="device-info">
+          <small>Device ID: <code id="deviceIdDisplay">-</code></small>
+        </div>
+        <button id="closeSettingsBtn" class="btn-primary full-width">Simpan & Tutup</button>
+      </div>
+    </div>
+
+    <!-- Modal Paywall Trial Habis (Siap dihubungkan ke Cloudflare di Tahap 3 & 4) -->
+    <div id="paywallModal" class="modal hidden">
+      <div class="modal-content paywall-box">
+        <div class="lock-icon">🔒</div>
+        <h3>Masa Percobaan 3 Hari Selesai</h3>
+        <p>Semoga ZenBeat sudah membantu melepas penatmu! Masukkan kode aktivasi untuk membuka akses permanen selamanya.</p>
+        <input type="text" id="licenseInput" placeholder="Contoh: ZEN-XXXX-XXXX" class="license-input" />
+        <button id="activateBtn" class="btn-primary full-width">Aktifkan Permanen</button>
+        <a href="https://lynk.id" target="_blank" rel="noopener" class="btn-lynk full-width">
+          Beli Kode Aktivasi di Lynk.id
+        </a>
+        <small class="device-hint">ID Perangkat: <span id="paywallDeviceId">-</span></small>
+      </div>
+    </div>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>
