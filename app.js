@@ -226,18 +226,23 @@ async function initTrialAndDevice() {
   appState.isActivated = activated === 'true' || activated === true;
 
   const savedOffset = localStorage.getItem(APP_CONFIG.storageKeyPrefix + 'offset');
-  if (savedOffset) {
+  const offsetSlider = document.getElementById('offsetSlider');
+  const offsetValue = document.getElementById('offsetValue');
+  if (savedOffset && offsetSlider && offsetValue) {
     appState.audioOffset = Number(savedOffset);
-    document.getElementById('offsetSlider').value = appState.audioOffset;
-    document.getElementById('offsetValue').textContent = appState.audioOffset;
+    offsetSlider.value = appState.audioOffset;
+    offsetValue.textContent = appState.audioOffset;
   }
 
   const savedSfx = localStorage.getItem(APP_CONFIG.storageKeyPrefix + 'sfxEnabled');
   appState.sfxEnabled = savedSfx !== 'false';
-  document.getElementById('sfxToggleCheckbox').checked = appState.sfxEnabled;
+  const sfxCheckbox = document.getElementById('sfxToggleCheckbox');
+  if (sfxCheckbox) sfxCheckbox.checked = appState.sfxEnabled;
 
-  document.getElementById('deviceIdDisplay').textContent = deviceId;
-  document.getElementById('paywallDeviceId').textContent = deviceId;
+  const devDisplay = document.getElementById('deviceIdDisplay');
+  const paywallDevDisplay = document.getElementById('paywallDeviceId');
+  if (devDisplay) devDisplay.textContent = deviceId;
+  if (paywallDevDisplay) paywallDevDisplay.textContent = deviceId;
 
   updateTrialUI();
   renderLocalHistory();
@@ -245,17 +250,11 @@ async function initTrialAndDevice() {
 
 function updateTrialUI() {
   const badge = document.getElementById('trialBadge');
-  const licenseBox = document.getElementById('licenseSection');
+  if (!badge) return true;
 
   if (appState.isActivated) {
     badge.textContent = '★ Permanen';
     badge.classList.add('activated');
-    if (licenseBox) {
-      licenseBox.innerHTML = `
-        <strong>★ Status Lisensi: Aktif Permanen</strong>
-        <small class="device-info">Terikat dengan ID Perangkat: <code>${appState.deviceId}</code></small>
-      `;
-    }
     return true;
   }
 
@@ -264,7 +263,8 @@ function updateTrialUI() {
 
   if (remaining <= 0) {
     badge.textContent = 'Trial Habis';
-    document.getElementById('paywallModal').classList.remove('hidden');
+    const paywallModal = document.getElementById('paywallModal');
+    if (paywallModal) paywallModal.classList.remove('hidden');
     return false;
   }
 
@@ -322,7 +322,8 @@ const serverAudioManager = {
 
   startFallbackSynthMenu() {
     if (this.isPlayingSynth || !appState.bgmEnabled) return;
-    if (document.getElementById('gameScreen').classList.contains('active')) return;
+    const gameScreen = document.getElementById('gameScreen');
+    if (gameScreen && gameScreen.classList.contains('active')) return;
 
     const ctx = this.ensureCtx();
     this.isPlayingSynth = true;
@@ -336,7 +337,8 @@ const serverAudioManager = {
 
     const playChord = () => {
       if (!this.isPlayingSynth || !appState.bgmEnabled) return;
-      if (document.getElementById('gameScreen').classList.contains('active')) {
+      const gs = document.getElementById('gameScreen');
+      if (gs && gs.classList.contains('active')) {
         this.stopFallbackSynthMenu();
         return;
       }
@@ -376,7 +378,8 @@ const serverAudioManager = {
 
   startMenuTheme() {
     if (!appState.bgmEnabled) return;
-    if (document.getElementById('gameScreen').classList.contains('active')) return;
+    const gameScreen = document.getElementById('gameScreen');
+    if (gameScreen && gameScreen.classList.contains('active')) return;
     this.stopResultMusic();
 
     if (!this.menuAudio) {
@@ -529,27 +532,37 @@ let currentTutorialStep = 0;
 
 function renderTutorialStep() {
   const step = TUTORIAL_STEPS[currentTutorialStep];
-  document.getElementById('tutorialStepBadge').textContent = `Langkah ${currentTutorialStep + 1} dari ${TUTORIAL_STEPS.length}`;
-  document.getElementById('tutorialVisual').textContent = step.visual;
-  document.getElementById('tutorialTitle').textContent = step.title;
-  document.getElementById('tutorialDesc').textContent = step.desc;
+  const badgeEl = document.getElementById('tutorialStepBadge');
+  const visualEl = document.getElementById('tutorialVisual');
+  const titleEl = document.getElementById('tutorialTitle');
+  const descEl = document.getElementById('tutorialDesc');
+  const nextBtn = document.getElementById('nextTutorialBtn');
+
+  if (badgeEl) badgeEl.textContent = `Langkah ${currentTutorialStep + 1} dari ${TUTORIAL_STEPS.length}`;
+  if (visualEl) visualEl.textContent = step.visual;
+  if (titleEl) titleEl.textContent = step.title;
+  if (descEl) descEl.textContent = step.desc;
 
   document.querySelectorAll('.t-dot').forEach((dot, idx) => {
     dot.classList.toggle('active', idx === currentTutorialStep);
   });
 
-  const nextBtn = document.getElementById('nextTutorialBtn');
-  nextBtn.textContent = currentTutorialStep === TUTORIAL_STEPS.length - 1 ? 'Selesai ✓' : 'Lanjut ▶';
+  if (nextBtn) {
+    nextBtn.textContent = currentTutorialStep === TUTORIAL_STEPS.length - 1 ? 'Selesai ✓' : 'Lanjut ▶';
+  }
 }
 
 function openTutorialModal() {
+  const modal = document.getElementById('tutorialModal');
+  if (!modal) return;
   currentTutorialStep = 0;
   renderTutorialStep();
-  document.getElementById('tutorialModal').classList.remove('hidden');
+  modal.classList.remove('hidden');
 }
 
 function closeTutorialModal() {
-  document.getElementById('tutorialModal').classList.add('hidden');
+  const modal = document.getElementById('tutorialModal');
+  if (modal) modal.classList.add('hidden');
   localStorage.setItem(APP_CONFIG.storageKeyPrefix + 'tutorial_seen', 'true');
 }
 
@@ -557,13 +570,16 @@ function closeTutorialModal() {
 function revealLevelSection(songTitle) {
   const section = document.getElementById('levelActionSection');
   const caption = document.getElementById('selectedSongCaption');
-  caption.textContent = `Lagu terpilih: ${songTitle}`;
-  section.classList.remove('hidden');
-  section.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+  if (caption) caption.textContent = `Lagu terpilih: ${songTitle}`;
+  if (section) {
+    section.classList.remove('hidden');
+    section.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+  }
 }
 
 function hideLevelSection() {
-  document.getElementById('levelActionSection').classList.add('hidden');
+  const section = document.getElementById('levelActionSection');
+  if (section) section.classList.add('hidden');
   document.querySelectorAll('.song-card-3d').forEach((el) => el.classList.remove('selected'));
   document.querySelectorAll('.history-item').forEach((el) => el.classList.remove('active-history'));
   appState.selectedSongId = '';
@@ -636,7 +652,7 @@ async function selectAndPrepareServerSong(song, cardEl, autoPlayPreview = true) 
   document.querySelectorAll('.song-card-3d').forEach((el) => {
     el.classList.remove('selected');
   });
-  cardEl.classList.add('selected');
+  if (cardEl) cardEl.classList.add('selected');
 
   appState.selectedSource = 'builtin';
   appState.selectedSongId = song.id;
@@ -645,17 +661,19 @@ async function selectAndPrepareServerSong(song, cardEl, autoPlayPreview = true) 
 
   revealLevelSection(song.title);
 
-  const pillEl = cardEl.querySelector('.status-pill');
-  const progressWrap = cardEl.querySelector('.dl-progress-wrap');
-  const fillEl = cardEl.querySelector('.dl-fill');
-  const pctEl = cardEl.querySelector('.dl-pct');
+  const pillEl = cardEl ? cardEl.querySelector('.status-pill') : null;
+  const progressWrap = cardEl ? cardEl.querySelector('.dl-progress-wrap') : null;
+  const fillEl = cardEl ? cardEl.querySelector('.dl-fill') : null;
+  const pctEl = cardEl ? cardEl.querySelector('.dl-pct') : null;
 
   let cachedBlob = await getServerSongBlob(song.src);
   if (cachedBlob && cachedBlob.size > 1024) {
     appState.serverSongBlob = cachedBlob;
-    pillEl.textContent = '✓ SIAP';
-    pillEl.classList.add('ready');
-    progressWrap.classList.add('hidden');
+    if (pillEl) {
+      pillEl.textContent = '✓ SIAP';
+      pillEl.classList.add('ready');
+    }
+    if (progressWrap) progressWrap.classList.add('hidden');
     if (autoPlayPreview) {
       previewManager.playPreviewFromSrcOrBlob(cachedBlob);
     }
@@ -664,29 +682,33 @@ async function selectAndPrepareServerSong(song, cardEl, autoPlayPreview = true) 
 
   appState.isDownloadingSong = true;
   appState.serverSongBlob = null;
-  pillEl.textContent = 'MENGUNDUH...';
-  progressWrap.classList.remove('hidden');
-  fillEl.style.width = '5%';
-  pctEl.textContent = '5%';
+  if (pillEl) pillEl.textContent = 'MENGUNDUH...';
+  if (progressWrap) progressWrap.classList.remove('hidden');
+  if (fillEl) fillEl.style.width = '5%';
+  if (pctEl) pctEl.textContent = '5%';
 
   try {
     const downloadedBlob = await downloadServerSongWithProgress(song.src, (pct) => {
-      fillEl.style.width = `${pct}%`;
-      pctEl.textContent = `${pct}%`;
+      if (fillEl) fillEl.style.width = `${pct}%`;
+      if (pctEl) pctEl.textContent = `${pct}%`;
     });
 
     appState.serverSongBlob = downloadedBlob;
-    pillEl.textContent = '✓ SIAP';
-    pillEl.classList.add('ready');
-    setTimeout(() => progressWrap.classList.add('hidden'), 400);
+    if (pillEl) {
+      pillEl.textContent = '✓ SIAP';
+      pillEl.classList.add('ready');
+    }
+    setTimeout(() => {
+      if (progressWrap) progressWrap.classList.add('hidden');
+    }, 400);
 
     if (autoPlayPreview) {
       previewManager.playPreviewFromSrcOrBlob(downloadedBlob);
     }
   } catch (err) {
     console.error('Gagal mengunduh lagu server:', err);
-    pillEl.textContent = '⬇ UNDUH ULANG';
-    progressWrap.classList.add('hidden');
+    if (pillEl) pillEl.textContent = '⬇ UNDUH ULANG';
+    if (progressWrap) progressWrap.classList.add('hidden');
     alert(`Gagal mengunduh "${song.title}". Periksa koneksi internet atau file di server.`);
   } finally {
     appState.isDownloadingSong = false;
@@ -695,6 +717,8 @@ async function selectAndPrepareServerSong(song, cardEl, autoPlayPreview = true) 
 
 async function loadBuiltinSongsFromJson() {
   const container = document.getElementById('builtinSongList');
+  if (!container) return;
+
   try {
     const res = await fetch(`${APP_CONFIG.serverAudio.songsManifest}?v=${Date.now()}`);
     if (!res.ok) throw new Error('songs.json tidak ditemukan');
@@ -810,6 +834,7 @@ function renderLocalHistory() {
   const history = getLocalHistory();
   const wrapper = document.getElementById('localHistoryWrapper');
   const listEl = document.getElementById('localHistoryList');
+  if (!wrapper || !listEl) return;
 
   if (history.length === 0) {
     wrapper.classList.add('hidden');
@@ -840,7 +865,8 @@ function renderLocalHistory() {
       const savedBlob = await getSongBlobFromDB(item.title);
       if (!savedBlob) {
         alert('File audio tidak ditemukan di memori perangkat. Silakan pilih ulang file lagunya.');
-        document.getElementById('audioFileInput').click();
+        const fileInput = document.getElementById('audioFileInput');
+        if (fileInput) fileInput.click();
         return;
       }
 
@@ -848,7 +874,8 @@ function renderLocalHistory() {
       appState.localAudioBlob = savedBlob;
       appState.selectedSongTitle = item.title;
 
-      document.getElementById('uploadedFileName').textContent = `✅ ${item.title}`;
+      const uploadedEl = document.getElementById('uploadedFileName');
+      if (uploadedEl) uploadedEl.textContent = `✅ ${item.title}`;
       renderLocalHistory();
       revealLevelSection(item.title);
       previewManager.playPreviewFromSrcOrBlob(savedBlob);
@@ -862,7 +889,7 @@ function renderLocalHistory() {
 class RhythmEngine {
   constructor() {
     this.canvas = document.getElementById('gameCanvas');
-    this.ctx = this.canvas.getContext('2d');
+    this.ctx = this.canvas ? this.canvas.getContext('2d') : null;
     this.isRunning = false;
     this.isPaused = false;
     this.isCountingDown = false;
@@ -906,10 +933,13 @@ class RhythmEngine {
     this.lostCount = 0;
     this.missCount = 0;
 
-    this.bindInputs();
+    if (this.canvas) {
+      this.bindInputs();
+    }
   }
 
   resizeCanvas() {
+    if (!this.canvas || !this.ctx) return;
     const rect = this.canvas.parentElement.getBoundingClientRect();
     const dpr = window.devicePixelRatio || 1;
     this.canvas.width = rect.width * dpr;
@@ -1003,10 +1033,18 @@ class RhythmEngine {
       const titleEl = document.getElementById('countdownSongTitle');
       const levelEl = document.getElementById('countdownLevelBadge');
 
+      if (!overlay || !textEl) {
+        this.isCountingDown = false;
+        resolve();
+        return;
+      }
+
       const levelInfo = APP_CONFIG.levels[appState.selectedLevel];
-      titleEl.textContent = appState.selectedSongTitle;
-      levelEl.textContent = `${levelInfo.short} • ${levelInfo.name}`;
-      levelEl.style.color = levelInfo.color;
+      if (titleEl) titleEl.textContent = appState.selectedSongTitle;
+      if (levelEl) {
+        levelEl.textContent = `${levelInfo.short} • ${levelInfo.name}`;
+        levelEl.style.color = levelInfo.color;
+      }
 
       const steps = ['3', '2', '1'];
       let idx = 0;
@@ -1144,12 +1182,14 @@ class RhythmEngine {
     if (this.audioEl && !this.audioEl.paused) {
       this.audioEl.pause();
     }
-    document.getElementById('pauseModal').classList.remove('hidden');
+    const pauseModal = document.getElementById('pauseModal');
+    if (pauseModal) pauseModal.classList.remove('hidden');
   }
 
   async resume() {
     if (!this.isRunning || !this.isPaused) return;
-    document.getElementById('pauseModal').classList.add('hidden');
+    const pauseModal = document.getElementById('pauseModal');
+    if (pauseModal) pauseModal.classList.add('hidden');
     await this.runCountdown();
 
     this.isPaused = false;
@@ -1412,6 +1452,7 @@ class RhythmEngine {
 
   showFeedback(text, animClass) {
     const el = document.getElementById('hitFeedback');
+    if (!el) return;
     el.textContent = text;
     el.className = 'hit-feedback';
     void el.offsetWidth;
@@ -1445,7 +1486,8 @@ class RhythmEngine {
   }
 
   updateScoreHUD() {
-    document.getElementById('scoreDisplay').textContent = this.score;
+    const scoreEl = document.getElementById('scoreDisplay');
+    if (scoreEl) scoreEl.textContent = this.score;
   }
 
   updateLifeUI() {
@@ -1453,15 +1495,17 @@ class RhythmEngine {
     const textEl = document.getElementById('lifePercentText');
     const clamped = Math.max(0, Math.round(this.life));
 
-    fillEl.style.width = `${clamped}%`;
-    textEl.textContent = `${clamped}%`;
-
-    if (clamped <= 30) {
-      fillEl.classList.add('danger');
-      textEl.style.color = '#f43f5e';
-    } else {
-      fillEl.classList.remove('danger');
-      textEl.style.color = '#ffffff';
+    if (fillEl) {
+      fillEl.style.width = `${clamped}%`;
+      if (clamped <= 30) {
+        fillEl.classList.add('danger');
+      } else {
+        fillEl.classList.remove('danger');
+      }
+    }
+    if (textEl) {
+      textEl.textContent = `${clamped}%`;
+      textEl.style.color = clamped <= 30 ? '#f43f5e' : '#ffffff';
     }
   }
 
@@ -1478,7 +1522,8 @@ class RhythmEngine {
     }
 
     const progressPct = Math.min(100, (elapsedSec / this.songDuration) * 100);
-    document.getElementById('songProgressBar').style.width = `${progressPct}%`;
+    const progBar = document.getElementById('songProgressBar');
+    if (progBar) progBar.style.width = `${progressPct}%`;
 
     if (elapsedSec >= this.songDuration) {
       this.finishGame(false);
@@ -1600,6 +1645,7 @@ class RhythmEngine {
   }
 
   draw() {
+    if (!this.ctx) return;
     const ctx = this.ctx;
     const laneW = this.width / 4;
     const levelCfg = APP_CONFIG.levels[appState.selectedLevel];
@@ -1831,6 +1877,7 @@ class RhythmEngine {
 
     bars.forEach((b) => {
       const el = document.getElementById(b.id);
+      if (!el) return;
       el.style.width = '0%';
       const pct = Math.round((b.count / safeTotal) * 100);
       requestAnimationFrame(() => {
@@ -1845,13 +1892,16 @@ class RhythmEngine {
     const rankEl = document.getElementById('resultRank');
     const gradeBarEl = document.getElementById('gradeBarFill');
 
-    rankEl.textContent = '?';
-    rankEl.className = 'result-rank';
-    gradeBarEl.style.width = '0%';
-
-    requestAnimationFrame(() => {
-      gradeBarEl.style.width = `${gradeInfo.barPct}%`;
-    });
+    if (rankEl) {
+      rankEl.textContent = '?';
+      rankEl.className = 'result-rank';
+    }
+    if (gradeBarEl) {
+      gradeBarEl.style.width = '0%';
+      requestAnimationFrame(() => {
+        gradeBarEl.style.width = `${gradeInfo.barPct}%`;
+      });
+    }
 
     const durationMs = 1150;
     const startTime = performance.now();
@@ -1862,8 +1912,8 @@ class RhythmEngine {
       const eased = 1 - Math.pow(1 - progress, 3);
       const currentVal = Math.floor(eased * targetScore);
 
-      scoreEl.textContent = currentVal.toLocaleString('id-ID');
-      highEl.textContent = Math.max(currentVal, highScore).toLocaleString('id-ID');
+      if (scoreEl) scoreEl.textContent = currentVal.toLocaleString('id-ID');
+      if (highEl) highEl.textContent = Math.max(currentVal, highScore).toLocaleString('id-ID');
 
       if (targetScore > 0 && now - lastTickSound >= 65 && progress < 1) {
         lastTickSound = now;
@@ -1873,11 +1923,13 @@ class RhythmEngine {
       if (progress < 1) {
         requestAnimationFrame(step);
       } else {
-        scoreEl.textContent = targetScore.toLocaleString('id-ID');
-        highEl.textContent = highScore.toLocaleString('id-ID');
+        if (scoreEl) scoreEl.textContent = targetScore.toLocaleString('id-ID');
+        if (highEl) highEl.textContent = highScore.toLocaleString('id-ID');
 
-        rankEl.textContent = gradeInfo.grade;
-        rankEl.className = `result-rank ${gradeInfo.cls} grade-stamp`;
+        if (rankEl) {
+          rankEl.textContent = gradeInfo.grade;
+          rankEl.className = `result-rank ${gradeInfo.cls} grade-stamp`;
+        }
         serverAudioManager.playSfx('perfect');
       }
     };
@@ -1908,21 +1960,30 @@ class RhythmEngine {
 
     const gradeInfo = this.calculateGrade(accuracy, isGameOver);
 
-    document.getElementById('resultTitle').textContent = isGameOver
-      ? 'Game Over!'
-      : gradeInfo.title;
-    document.getElementById('resultSubtitle').textContent = isGameOver
-      ? 'Cobaan terlalu deras, tarik napas dulu lalu coba lagi!'
-      : `Akurasi Ketukan: ${accuracy.toFixed(1)}%${this.lostCount > 0 ? ` (${this.lostCount} Hold Lost)` : ''}`;
+    const titleEl = document.getElementById('resultTitle');
+    const subEl = document.getElementById('resultSubtitle');
+    const highLabelEl = document.getElementById('finalHighScoreLabel');
+    const maxComboEl = document.getElementById('finalMaxCombo');
+    const perfEl = document.getElementById('finalPerfect');
+    const goodEl = document.getElementById('finalGood');
+    const badEl = document.getElementById('finalBad');
+    const missEl = document.getElementById('finalMiss');
+    const resultModal = document.getElementById('resultModal');
 
-    document.getElementById('finalHighScoreLabel').textContent = `HIGH (${levelCfg.short})`;
-    document.getElementById('finalMaxCombo').textContent = `${this.maxCombo}x`;
-    document.getElementById('finalPerfect').textContent = this.perfectCount;
-    document.getElementById('finalGood').textContent = this.goodCount;
-    document.getElementById('finalBad').textContent = this.badCount + this.lostCount;
-    document.getElementById('finalMiss').textContent = this.missCount;
+    if (titleEl) titleEl.textContent = isGameOver ? 'Game Over!' : gradeInfo.title;
+    if (subEl) {
+      subEl.textContent = isGameOver
+        ? 'Cobaan terlalu deras, tarik napas dulu lalu coba lagi!'
+        : `Akurasi Ketukan: ${accuracy.toFixed(1)}%${this.lostCount > 0 ? ` (${this.lostCount} Hold Lost)` : ''}`;
+    }
+    if (highLabelEl) highLabelEl.textContent = `HIGH (${levelCfg.short})`;
+    if (maxComboEl) maxComboEl.textContent = `${this.maxCombo}x`;
+    if (perfEl) perfEl.textContent = this.perfectCount;
+    if (goodEl) goodEl.textContent = this.goodCount;
+    if (badEl) badEl.textContent = this.badCount + this.lostCount;
+    if (missEl) missEl.textContent = this.missCount;
+    if (resultModal) resultModal.classList.remove('hidden');
 
-    document.getElementById('resultModal').classList.remove('hidden');
     this.animateResultBars(totalNotes);
     this.animateScoreCounter(this.score, highScore, gradeInfo);
   }
@@ -1984,14 +2045,18 @@ function applyThemeColor(levelKey) {
 
 function enterFullScreenGame() {
   document.body.classList.add('in-game');
-  document.getElementById('menuScreen').classList.remove('active');
-  document.getElementById('gameScreen').classList.add('active');
+  const menuScreen = document.getElementById('menuScreen');
+  const gameScreen = document.getElementById('gameScreen');
+  if (menuScreen) menuScreen.classList.remove('active');
+  if (gameScreen) gameScreen.classList.add('active');
 }
 
 function exitFullScreenToMenu() {
   document.body.classList.remove('in-game');
-  document.getElementById('gameScreen').classList.remove('active');
-  document.getElementById('menuScreen').classList.add('active');
+  const gameScreen = document.getElementById('gameScreen');
+  const menuScreen = document.getElementById('menuScreen');
+  if (gameScreen) gameScreen.classList.remove('active');
+  if (menuScreen) menuScreen.classList.add('active');
   serverAudioManager.startMenuTheme();
 }
 
@@ -2013,47 +2078,61 @@ function setupUIEvents() {
     openTutorialModal();
   }
 
-  document.getElementById('openTutorialBtn').addEventListener('click', () => {
-    serverAudioManager.playSfx('buttonClick');
-    openTutorialModal();
-  });
+  const openTutBtn = document.getElementById('openTutorialBtn');
+  if (openTutBtn) {
+    openTutBtn.addEventListener('click', () => {
+      serverAudioManager.playSfx('buttonClick');
+      openTutorialModal();
+    });
+  }
 
-  document.getElementById('nextTutorialBtn').addEventListener('click', () => {
-    serverAudioManager.playSfx('buttonClick');
-    if (currentTutorialStep < TUTORIAL_STEPS.length - 1) {
-      currentTutorialStep++;
-      renderTutorialStep();
-    } else {
+  const nextTutBtn = document.getElementById('nextTutorialBtn');
+  if (nextTutBtn) {
+    nextTutBtn.addEventListener('click', () => {
+      serverAudioManager.playSfx('buttonClick');
+      if (currentTutorialStep < TUTORIAL_STEPS.length - 1) {
+        currentTutorialStep++;
+        renderTutorialStep();
+      } else {
+        closeTutorialModal();
+      }
+    });
+  }
+
+  const skipTutBtn = document.getElementById('skipTutorialBtn');
+  if (skipTutBtn) {
+    skipTutBtn.addEventListener('click', () => {
+      serverAudioManager.playSfx('buttonClick');
       closeTutorialModal();
-    }
-  });
+    });
+  }
 
-  document.getElementById('skipTutorialBtn').addEventListener('click', () => {
-    serverAudioManager.playSfx('buttonClick');
-    closeTutorialModal();
-  });
-
-  document.getElementById('unselectSongBtn').addEventListener('click', () => {
-    serverAudioManager.playSfx('buttonClick');
-    previewManager.stop();
-    hideLevelSection();
-  });
+  const unselectBtn = document.getElementById('unselectSongBtn');
+  if (unselectBtn) {
+    unselectBtn.addEventListener('click', () => {
+      serverAudioManager.playSfx('buttonClick');
+      previewManager.stop();
+      hideLevelSection();
+    });
+  }
 
   const bgmBtn = document.getElementById('bgmToggleBtn');
-  bgmBtn.addEventListener('click', (e) => {
-    e.stopPropagation();
-    serverAudioManager.playSfx('buttonClick');
-    appState.bgmEnabled = !appState.bgmEnabled;
-    if (appState.bgmEnabled) {
-      bgmBtn.textContent = '🎵 ON';
-      bgmBtn.classList.remove('muted');
-      serverAudioManager.startMenuTheme();
-    } else {
-      bgmBtn.textContent = '🔇 OFF';
-      bgmBtn.classList.add('muted');
-      serverAudioManager.stopMenuTheme();
-    }
-  });
+  if (bgmBtn) {
+    bgmBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      serverAudioManager.playSfx('buttonClick');
+      appState.bgmEnabled = !appState.bgmEnabled;
+      if (appState.bgmEnabled) {
+        bgmBtn.textContent = '🎵 ON';
+        bgmBtn.classList.remove('muted');
+        serverAudioManager.startMenuTheme();
+      } else {
+        bgmBtn.textContent = '🔇 OFF';
+        bgmBtn.classList.add('muted');
+        serverAudioManager.stopMenuTheme();
+      }
+    });
+  }
 
   document.querySelectorAll('.tab-btn').forEach((btn) => {
     btn.addEventListener('click', () => {
@@ -2065,40 +2144,44 @@ function setupUIEvents() {
       btn.classList.add('active');
       const target = btn.dataset.tab;
       appState.selectedSource = target;
-      document.getElementById(`${target}Tab`).classList.add('active');
+      const targetTab = document.getElementById(`${target}Tab`);
+      if (targetTab) targetTab.classList.add('active');
     });
   });
 
   const fileInput = document.getElementById('audioFileInput');
-  fileInput.addEventListener('change', async (e) => {
-    const file = e.target.files[0];
-    if (!file) return;
+  if (fileInput) {
+    fileInput.addEventListener('change', async (e) => {
+      const file = e.target.files[0];
+      if (!file) return;
 
-    const duration = await checkAudioDuration(file);
-    if (duration < APP_CONFIG.minSongDurationSec) {
-      alert(`Durasi lagu terlalu pendek (${Math.round(duration)} detik). Minimal durasi lagu adalah 30 detik.`);
-      fileInput.value = '';
-      return;
-    }
-    if (duration > APP_CONFIG.maxSongDurationSec) {
-      const mins = (duration / 60).toFixed(1);
-      alert(`Durasi lagu terlalu panjang (${mins} menit). Maksimal durasi lagu adalah 10 menit.`);
-      fileInput.value = '';
-      return;
-    }
+      const duration = await checkAudioDuration(file);
+      if (duration < APP_CONFIG.minSongDurationSec) {
+        alert(`Durasi lagu terlalu pendek (${Math.round(duration)} detik). Minimal durasi lagu adalah 30 detik.`);
+        fileInput.value = '';
+        return;
+      }
+      if (duration > APP_CONFIG.maxSongDurationSec) {
+        const mins = (duration / 60).toFixed(1);
+        alert(`Durasi lagu terlalu panjang (${mins} menit). Maksimal durasi lagu adalah 10 menit.`);
+        fileInput.value = '';
+        return;
+      }
 
-    serverAudioManager.playSfx('buttonClick');
-    const cleanTitle = file.name.replace(/\.[^/.]+$/, '');
-    appState.selectedSource = 'local';
-    appState.localAudioBlob = file;
-    appState.selectedSongTitle = cleanTitle;
+      serverAudioManager.playSfx('buttonClick');
+      const cleanTitle = file.name.replace(/\.[^/.]+$/, '');
+      appState.selectedSource = 'local';
+      appState.localAudioBlob = file;
+      appState.selectedSongTitle = cleanTitle;
 
-    document.getElementById('uploadedFileName').textContent = `✅ ${cleanTitle}`;
-    await saveSongBlobToDB(cleanTitle, file);
-    saveLocalSongRecord(cleanTitle, appState.selectedLevel, 0);
-    revealLevelSection(cleanTitle);
-    previewManager.playPreviewFromSrcOrBlob(file);
-  });
+      const uploadedNameEl = document.getElementById('uploadedFileName');
+      if (uploadedNameEl) uploadedNameEl.textContent = `✅ ${cleanTitle}`;
+      await saveSongBlobToDB(cleanTitle, file);
+      saveLocalSongRecord(cleanTitle, appState.selectedLevel, 0);
+      revealLevelSection(cleanTitle);
+      previewManager.playPreviewFromSrcOrBlob(file);
+    });
+  }
 
   document.querySelectorAll('.level-btn-3d').forEach((card) => {
     card.addEventListener('click', () => {
@@ -2110,225 +2193,294 @@ function setupUIEvents() {
     });
   });
 
-  document.getElementById('startGameBtn').addEventListener('click', async () => {
-    serverAudioManager.playSfx('buttonClick');
-    if (!updateTrialUI()) return;
-    serverAudioManager.ensureCtx();
+  const startBtn = document.getElementById('startGameBtn');
+  if (startBtn) {
+    startBtn.addEventListener('click', async () => {
+      serverAudioManager.playSfx('buttonClick');
+      if (!updateTrialUI()) return;
+      serverAudioManager.ensureCtx();
 
-    if (appState.isDownloadingSong) {
-      alert('Tunggu sebentar sampai proses unduhan lagu selesai (100%) ya!');
-      return;
-    }
-
-    if (!appState.selectedSongTitle) {
-      alert('Silakan ketuk dan pilih lagu terlebih dahulu ya!');
-      return;
-    }
-
-    if (appState.selectedSource === 'local' && !appState.localAudioBlob) {
-      alert('Pilih file lagu MP3/WAV dari perangkatmu atau dari daftar riwayat terlebih dahulu ya!');
-      return;
-    }
-
-    if (appState.selectedSource === 'builtin' && !appState.serverSongBlob) {
-      const selectedCard = document.querySelector('.song-card-3d.selected');
-      if (selectedCard) {
-        await selectAndPrepareServerSong(
-          {
-            id: appState.selectedSongId,
-            src: appState.selectedSongSrc,
-            title: appState.selectedSongTitle
-          },
-          selectedCard,
-          false
-        );
+      if (appState.isDownloadingSong) {
+        alert('Tunggu sebentar sampai proses unduhan lagu selesai (100%) ya!');
+        return;
       }
-      if (!appState.serverSongBlob) return;
-    }
 
-    enterFullScreenGame();
-    await rhythmEngine.start();
-  });
+      if (!appState.selectedSongTitle) {
+        alert('Silakan ketuk dan pilih lagu terlebih dahulu ya!');
+        return;
+      }
 
-  document.getElementById('pauseGameBtn').addEventListener('click', () => {
-    serverAudioManager.playSfx('buttonClick');
-    rhythmEngine.pause();
-  });
+      if (appState.selectedSource === 'local' && !appState.localAudioBlob) {
+        alert('Pilih file lagu MP3/WAV dari perangkatmu atau dari daftar riwayat terlebih dahulu ya!');
+        return;
+      }
 
-  document.getElementById('resumeGameBtn').addEventListener('click', async () => {
-    serverAudioManager.playSfx('buttonClick');
-    await rhythmEngine.resume();
-  });
+      if (appState.selectedSource === 'builtin' && !appState.serverSongBlob) {
+        const selectedCard = document.querySelector('.song-card-3d.selected');
+        if (selectedCard) {
+          await selectAndPrepareServerSong(
+            {
+              id: appState.selectedSongId,
+              src: appState.selectedSongSrc,
+              title: appState.selectedSongTitle
+            },
+            selectedCard,
+            false
+          );
+        }
+        if (!appState.serverSongBlob) return;
+      }
 
-  document.getElementById('quitToMenuBtn').addEventListener('click', () => {
-    serverAudioManager.playSfx('buttonClick');
-    document.getElementById('pauseModal').classList.add('hidden');
-    rhythmEngine.stop();
-    exitFullScreenToMenu();
-  });
+      enterFullScreenGame();
+      await rhythmEngine.start();
+    });
+  }
 
-  document.getElementById('playAgainBtn').addEventListener('click', async () => {
-    serverAudioManager.playSfx('buttonClick');
-    serverAudioManager.stopResultMusic();
-    document.getElementById('resultModal').classList.add('hidden');
-    await rhythmEngine.start();
-  });
+  const pauseBtn = document.getElementById('pauseGameBtn');
+  if (pauseBtn) {
+    pauseBtn.addEventListener('click', () => {
+      serverAudioManager.playSfx('buttonClick');
+      rhythmEngine.pause();
+    });
+  }
 
-  document.getElementById('resultMenuBtn').addEventListener('click', () => {
-    serverAudioManager.playSfx('buttonClick');
-    serverAudioManager.stopResultMusic();
-    document.getElementById('resultModal').classList.add('hidden');
-    exitFullScreenToMenu();
-  });
+  const resumeBtn = document.getElementById('resumeGameBtn');
+  if (resumeBtn) {
+    resumeBtn.addEventListener('click', async () => {
+      serverAudioManager.playSfx('buttonClick');
+      await rhythmEngine.resume();
+    });
+  }
+
+  const quitBtn = document.getElementById('quitToMenuBtn');
+  if (quitBtn) {
+    quitBtn.addEventListener('click', () => {
+      serverAudioManager.playSfx('buttonClick');
+      const pauseModal = document.getElementById('pauseModal');
+      if (pauseModal) pauseModal.classList.add('hidden');
+      rhythmEngine.stop();
+      exitFullScreenToMenu();
+    });
+  }
+
+  const playAgainBtn = document.getElementById('playAgainBtn');
+  if (playAgainBtn) {
+    playAgainBtn.addEventListener('click', async () => {
+      serverAudioManager.playSfx('buttonClick');
+      serverAudioManager.stopResultMusic();
+      const resultModal = document.getElementById('resultModal');
+      if (resultModal) resultModal.classList.add('hidden');
+      await rhythmEngine.start();
+    });
+  }
+
+  const resultMenuBtn = document.getElementById('resultMenuBtn');
+  if (resultMenuBtn) {
+    resultMenuBtn.addEventListener('click', () => {
+      serverAudioManager.playSfx('buttonClick');
+      serverAudioManager.stopResultMusic();
+      const resultModal = document.getElementById('resultModal');
+      if (resultModal) resultModal.classList.add('hidden');
+      exitFullScreenToMenu();
+    });
+  }
 
   const settingsModal = document.getElementById('settingsModal');
-  document.getElementById('openSettingsBtn').addEventListener('click', () => {
-    serverAudioManager.playSfx('buttonClick');
-    settingsModal.classList.remove('hidden');
-  });
+  const openSettingsBtn = document.getElementById('openSettingsBtn');
+  if (openSettingsBtn && settingsModal) {
+    openSettingsBtn.addEventListener('click', () => {
+      serverAudioManager.playSfx('buttonClick');
+      settingsModal.classList.remove('hidden');
+    });
+  }
 
-  document.getElementById('sfxToggleCheckbox').addEventListener('change', (e) => {
-    appState.sfxEnabled = e.target.checked;
-    localStorage.setItem(APP_CONFIG.storageKeyPrefix + 'sfxEnabled', String(appState.sfxEnabled));
-    if (appState.sfxEnabled) serverAudioManager.playSfx('buttonClick');
-  });
+  const sfxToggle = document.getElementById('sfxToggleCheckbox');
+  if (sfxToggle) {
+    sfxToggle.addEventListener('change', (e) => {
+      appState.sfxEnabled = e.target.checked;
+      localStorage.setItem(APP_CONFIG.storageKeyPrefix + 'sfxEnabled', String(appState.sfxEnabled));
+      if (appState.sfxEnabled) serverAudioManager.playSfx('buttonClick');
+    });
+  }
 
-  document.getElementById('offsetSlider').addEventListener('input', (e) => {
-    appState.audioOffset = Number(e.target.value);
-    document.getElementById('offsetValue').textContent = appState.audioOffset;
-  });
+  const offsetSlider = document.getElementById('offsetSlider');
+  if (offsetSlider) {
+    offsetSlider.addEventListener('input', (e) => {
+      appState.audioOffset = Number(e.target.value);
+      const offsetVal = document.getElementById('offsetValue');
+      if (offsetVal) offsetVal.textContent = appState.audioOffset;
+    });
+  }
 
-  document.getElementById('closeSettingsBtn').addEventListener('click', () => {
-    serverAudioManager.playSfx('buttonClick');
-    localStorage.setItem(APP_CONFIG.storageKeyPrefix + 'offset', String(appState.audioOffset));
-    settingsModal.classList.add('hidden');
-  });
+  const closeSettingsBtn = document.getElementById('closeSettingsBtn');
+  if (closeSettingsBtn && settingsModal) {
+    closeSettingsBtn.addEventListener('click', () => {
+      serverAudioManager.playSfx('buttonClick');
+      localStorage.setItem(APP_CONFIG.storageKeyPrefix + 'offset', String(appState.audioOffset));
+      settingsModal.classList.add('hidden');
+    });
+  }
 
   // Aktivasi Lisensi ke Cloudflare Worker
-  document.getElementById('activateBtn').addEventListener('click', async () => {
-    serverAudioManager.playSfx('buttonClick');
-    const btn = document.getElementById('activateBtn');
-    const input = document.getElementById('licenseInput');
-    const code = input.value.trim().toUpperCase();
+  const activateBtn = document.getElementById('activateBtn');
+  if (activateBtn) {
+    activateBtn.addEventListener('click', async () => {
+      serverAudioManager.playSfx('buttonClick');
+      const input = document.getElementById('licenseInput');
+      const code = input ? input.value.trim().toUpperCase() : '';
 
-    if (!code) {
-      alert('Masukkan kode aktivasi dari Lynk.id terlebih dahulu.');
-      return;
-    }
-
-    btn.disabled = true;
-    btn.textContent = 'Memeriksa Kode...';
-
-    try {
-      const response = await fetch(APP_CONFIG.licenseApiUrl, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          licenseCode: code,
-          deviceId: appState.deviceId
-        })
-      });
-
-      const data = await response.json();
-
-      if (data.valid) {
-        appState.isActivated = true;
-        await setPersistedValue('isActivated', 'true');
-        await setPersistedValue('licenseCode', code);
-        updateTrialUI();
-        document.getElementById('paywallModal').classList.add('hidden');
-        alert(data.message);
-      } else {
-        alert(data.message || 'Kode aktivasi tidak valid.');
+      if (!code) {
+        alert('Masukkan kode aktivasi dari Lynk.id terlebih dahulu.');
+        return;
       }
-    } catch (err) {
-      alert('Gagal terhubung ke server aktivasi. Pastikan koneksi internet aktif.');
-    } finally {
-      btn.disabled = false;
-      btn.textContent = 'Aktifkan Sekarang';
-    }
-  });
+
+      activateBtn.disabled = true;
+      activateBtn.textContent = 'Memeriksa Kode...';
+
+      try {
+        const response = await fetch(APP_CONFIG.licenseApiUrl, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            licenseCode: code,
+            deviceId: appState.deviceId
+          })
+        });
+
+        const data = await response.json();
+
+        if (data.valid) {
+          appState.isActivated = true;
+          await setPersistedValue('isActivated', 'true');
+          await setPersistedValue('licenseCode', code);
+          updateTrialUI();
+          const paywallModal = document.getElementById('paywallModal');
+          if (paywallModal) paywallModal.classList.add('hidden');
+          alert(data.message);
+        } else {
+          alert(data.message || 'Kode aktivasi tidak valid.');
+        }
+      } catch (err) {
+        alert('Gagal terhubung ke server aktivasi. Pastikan koneksi internet aktif.');
+      } finally {
+        activateBtn.disabled = false;
+        activateBtn.textContent = 'Aktifkan Sekarang';
+      }
+    });
+  }
 }
 
-// --- 7. PWA SERVICE WORKER & TOMBOL INSTALL SAAT PERTAMA KALI DIBUKA ---
+// --- 7. PWA SERVICE WORKER & TOMBOL INSTALL OTOMATIS ---
 let deferredPrompt = null;
 
 function isRunningAsInstalledPWA() {
   return window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone === true;
 }
 
-function initInstallPromptUI() {
-  const frontBanner = document.getElementById('frontInstallBanner');
-  const frontBtn = document.getElementById('frontInstallBtn');
-  const settingsWrapper = document.getElementById('installWrapper');
-  const settingsBtn = document.getElementById('installBtn');
+function ensureInstallUI() {
+  const installWrapper = document.getElementById('installWrapper');
+  const installBtn = document.getElementById('installBtn');
+  const settingsBtn = document.getElementById('openSettingsBtn');
 
-  if (!frontBanner || !frontBtn) return;
+  // Pastikan tombol Pengaturan selalu terlihat
+  if (settingsBtn) {
+    settingsBtn.classList.remove('hidden');
+    settingsBtn.style.display = '';
+  }
 
-  // Sembunyikan jika sudah dijalankan dari aplikasi yang ter-install
   if (isRunningAsInstalledPWA()) {
-    frontBanner.classList.add('hidden');
-    if (settingsWrapper) settingsWrapper.classList.add('hidden');
+    const existingBanner = document.getElementById('zenbeatInstallBanner');
+    if (existingBanner) existingBanner.remove();
+    if (installWrapper) installWrapper.classList.add('hidden');
     return;
   }
 
-  // Tampilkan langsung tombol Install saat pertama kali dibuka di browser
-  frontBanner.classList.remove('hidden');
-  if (settingsWrapper) settingsWrapper.classList.remove('hidden');
+  if (installWrapper) installWrapper.classList.remove('hidden');
 
-  const handleInstallClick = async () => {
+  // Buat banner install di halaman depan jika belum ada
+  let banner = document.getElementById('zenbeatInstallBanner');
+  if (!banner) {
+    banner = document.createElement('div');
+    banner.id = 'zenbeatInstallBanner';
+    banner.style.cssText = `
+      display: flex; align-items: center; justify-content: space-between; gap: 10px;
+      background: linear-gradient(135deg, rgba(56, 189, 248, 0.2), rgba(168, 85, 247, 0.2));
+      border: 1px solid rgba(56, 189, 248, 0.5); border-radius: 14px;
+      padding: 10px 14px; margin: 0 0 14px 0; color: #ffffff; font-size: 13px;
+      box-shadow: 0 4px 15px rgba(0,0,0,0.25);
+    `;
+    banner.innerHTML = `
+      <span>📲 <strong>Pasang Aplikasi ZenBeat</strong> (Layar Penuh & Offline)</span>
+      <button id="zenbeatFrontInstallBtn" type="button" style="
+        background: #38bdf8; color: #070913; border: none; border-radius: 10px;
+        padding: 8px 14px; font-weight: 800; font-size: 12px; cursor: pointer; white-space: nowrap;
+      ">Install</button>
+    `;
+
+    const menuContainer = document.querySelector('#menuScreen .menu-container') || document.getElementById('menuScreen');
+    if (menuContainer) {
+      menuContainer.insertBefore(banner, menuContainer.firstChild);
+    }
+  }
+
+  const triggerInstall = async () => {
     serverAudioManager.playSfx('buttonClick');
-
-    // Jika browser mendukung popup install native (Chrome/Edge/Android)
     if (deferredPrompt) {
       deferredPrompt.prompt();
       const { outcome } = await deferredPrompt.userChoice;
       if (outcome === 'accepted') {
-        frontBanner.classList.add('hidden');
-        if (settingsWrapper) settingsWrapper.classList.add('hidden');
+        banner.remove();
+        if (installWrapper) installWrapper.classList.add('hidden');
       }
       deferredPrompt = null;
       return;
     }
 
-    // Panduan otomatis jika browser belum memicu prompt (misal Safari iOS atau in-app browser)
     const isIOS = /iphone|ipad|ipod/i.test(navigator.userAgent);
     if (isIOS) {
-      alert('Cara Install ZenBeat di iPhone/iPad:\n1. Ketuk ikon Share (kotak dengan panah ke atas) di bagian bawah Safari.\n2. Gulir ke bawah dan pilih "Add to Home Screen" (Tambah ke Layar Utama).');
+      alert('Cara Pasang ZenBeat di iPhone/iPad:\n1. Ketuk ikon Share (kotak panah ke atas) di bawah Safari.\n2. Pilih "Add to Home Screen" (Tambah ke Layar Utama).');
     } else {
-      alert('Cara Install ZenBeat ke Layar Utama:\n1. Ketuk ikon titik tiga (⋮) di pojok kanan atas browser.\n2. Pilih "Install aplikasi" atau "Tambahkan ke Layar utama".');
+      alert('Cara Pasang ZenBeat ke Layar Utama:\n1. Ketuk ikon titik tiga (⋮) di pojok kanan atas browser.\n2. Pilih "Install aplikasi" atau "Tambahkan ke Layar utama".');
     }
   };
 
-  frontBtn.onclick = handleInstallClick;
-  if (settingsBtn) settingsBtn.onclick = handleInstallClick;
+  const frontBtn = document.getElementById('zenbeatFrontInstallBtn');
+  if (frontBtn) frontBtn.onclick = triggerInstall;
+  if (installBtn) installBtn.onclick = triggerInstall;
 }
 
 window.addEventListener('beforeinstallprompt', (e) => {
   e.preventDefault();
   deferredPrompt = e;
-  initInstallPromptUI();
+  ensureInstallUI();
 });
 
 window.addEventListener('appinstalled', () => {
-  const frontBanner = document.getElementById('frontInstallBanner');
-  const settingsWrapper = document.getElementById('installWrapper');
-  if (frontBanner) frontBanner.classList.add('hidden');
-  if (settingsWrapper) settingsWrapper.classList.add('hidden');
+  const banner = document.getElementById('zenbeatInstallBanner');
+  const installWrapper = document.getElementById('installWrapper');
+  if (banner) banner.remove();
+  if (installWrapper) installWrapper.classList.add('hidden');
   deferredPrompt = null;
 });
 
 if ('serviceWorker' in navigator) {
   window.addEventListener('load', () => {
-    navigator.serviceWorker.register('./service-worker.js').catch((err) => {
+    navigator.serviceWorker.register('./service-worker.js').then((reg) => {
+      reg.update();
+    }).catch((err) => {
       console.warn('SW gagal terdaftar:', err);
     });
   });
 }
 
 document.addEventListener('DOMContentLoaded', async () => {
-  initInstallPromptUI();
-  await initTrialAndDevice();
-  await loadBuiltinSongsFromJson();
-  setupUIEvents();
+  ensureInstallUI();
+  try {
+    await initTrialAndDevice();
+    await loadBuiltinSongsFromJson();
+    setupUIEvents();
+    ensureInstallUI();
+  } catch (err) {
+    console.error('Error saat memuat ZenBeat:', err);
+  }
 });
