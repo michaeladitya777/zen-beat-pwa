@@ -26,8 +26,8 @@ const APP_CONFIG = {
     easy: {
       name: 'Mode Santuy',
       short: 'EASY',
-      color: '#38bdf8',
-      rgb: '56, 189, 248',
+      color: '#6ee7b7',
+      rgb: '110, 231, 183',
       speed: 280,
       cooldown: 640,
       doubleChance: 0,
@@ -40,8 +40,8 @@ const APP_CONFIG = {
     normal: {
       name: 'Mode Biasa Aja',
       short: 'NORMAL',
-      color: '#34d399',
-      rgb: '52, 211, 153',
+      color: '#7dd3fc',
+      rgb: '125, 211, 252',
       speed: 390,
       cooldown: 430,
       doubleChance: 0.05,
@@ -54,8 +54,8 @@ const APP_CONFIG = {
     hard: {
       name: 'Kebut Semalam',
       short: 'HARD',
-      color: '#fb923c',
-      rgb: '251, 146, 60',
+      color: '#ffb454',
+      rgb: '255, 180, 84',
       speed: 520,
       cooldown: 245,
       doubleChance: 0.14,
@@ -68,8 +68,8 @@ const APP_CONFIG = {
     extreme: {
       name: 'Mode WNI',
       short: 'EXTREME',
-      color: '#f43f5e',
-      rgb: '244, 63, 94',
+      color: '#ff5d7a',
+      rgb: '255, 93, 122',
       speed: 650,
       cooldown: 165,
       doubleChance: 0.28,
@@ -99,6 +99,10 @@ const appState = {
   bgmEnabled: true,
   isDownloadingSong: false
 };
+
+function escapeHtml(value) {
+  return String(value).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+}
 
 // --- 1. INDEXEDDB (LISENSI, LAGU LOKAL & CACHE UNDUHAN LAGU SERVER) ---
 function openAppDB() {
@@ -253,51 +257,27 @@ function openUpgradeModal(isExpired = false) {
   const paywallModal = document.getElementById('paywallModal');
   if (!paywallModal) return;
 
-  // Pastikan tombol beli mengarah langsung ke link toko Lynk.id kamu
-  const buyLink = paywallModal.querySelector('a[href*="lynk.id"]');
-  if (buyLink) {
-    buyLink.href = APP_CONFIG.lynkStoreUrl;
-  }
+  ['paywallBuyLink', 'settingsBuyLink'].forEach((id) => {
+    const link = document.getElementById(id);
+    if (link) link.href = APP_CONFIG.lynkStoreUrl;
+  });
 
-  const titleEl = paywallModal.querySelector('h3');
-  if (titleEl) {
-    titleEl.textContent = isExpired ? 'Masa Trial 3 Hari Selesai' : 'Upgrade ke ZenBeat Pro';
-  }
+  const titleEl = document.getElementById('paywallTitle');
+  if (titleEl) titleEl.textContent = isExpired ? 'Masa trial 3 hari selesai' : 'Upgrade ke ZenBeat Pro';
 
-  // Tambahkan tombol "Lanjut Trial" jika masa trial belum habis
-  let closeTrialBtn = document.getElementById('closeEarlyUpgradeBtn');
-  if (!isExpired) {
-    if (!closeTrialBtn) {
-      closeTrialBtn = document.createElement('button');
-      closeTrialBtn.id = 'closeEarlyUpgradeBtn';
-      closeTrialBtn.type = 'button';
-      closeTrialBtn.style.cssText = `
-        width: 100%; margin-top: 10px; background: rgba(255,255,255,0.08);
-        color: #cbd5e1; border: 1px solid rgba(255,255,255,0.15);
-        border-radius: 12px; padding: 10px; font-weight: 700; font-size: 13px; cursor: pointer;
-      `;
-      closeTrialBtn.textContent = 'Lanjut Main (Mode Trial)';
-      closeTrialBtn.onclick = () => {
-        serverAudioManager.playSfx('buttonClick');
-        paywallModal.classList.add('hidden');
-      };
-      const modalBox = paywallModal.querySelector('.modal-surface-3d') || paywallModal.firstElementChild;
-      if (modalBox) modalBox.appendChild(closeTrialBtn);
-    }
-    closeTrialBtn.style.display = 'block';
-  } else if (closeTrialBtn) {
-    closeTrialBtn.style.display = 'none';
-  }
+  const closeBtn = document.getElementById('closeEarlyUpgradeBtn');
+  if (closeBtn) closeBtn.classList.toggle('hidden', isExpired);
 
   paywallModal.classList.remove('hidden');
 }
 
 function updateTrialUI() {
+  syncLicenseUI();
   const badge = document.getElementById('trialBadge');
   if (!badge) return true;
 
   if (appState.isActivated) {
-    badge.textContent = '★ Permanen';
+    badge.textContent = '★ Pro';
     badge.classList.add('activated');
     badge.style.cursor = 'default';
     badge.onclick = null;
@@ -308,7 +288,7 @@ function updateTrialUI() {
   const remaining = APP_CONFIG.trialDurationMs - elapsed;
 
   if (remaining <= 0) {
-    badge.textContent = 'Trial Habis • Beli';
+    badge.textContent = 'Trial habis — beli';
     badge.style.cursor = 'pointer';
     badge.onclick = () => {
       serverAudioManager.playSfx('buttonClick');
@@ -322,7 +302,7 @@ function updateTrialUI() {
   const daysLeft = Math.floor(hoursLeft / 24);
   const remHours = hoursLeft % 24;
 
-  badge.textContent = `Trial ${daysLeft}h ${remHours}j • Pro`;
+  badge.textContent = `Trial ${daysLeft} hari ${remHours} jam`;
   badge.style.cursor = 'pointer';
   badge.title = 'Klik untuk beli lisensi permanen';
   badge.onclick = () => {
@@ -338,6 +318,7 @@ const serverAudioManager = {
   resultAudio: null,
   sfxBuffers: {},
   sfxHtmlElements: {},
+  missing: new Set(),
   sharedCtx: null,
   synthTimer: null,
   isPlayingSynth: false,
@@ -366,12 +347,14 @@ const serverAudioManager = {
     await Promise.all(entries.map(async ([key, src]) => {
       try {
         const res = await fetch(src);
-        if (!res.ok) return;
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
         const arrayBuf = await res.arrayBuffer();
         const audioBuf = await ctx.decodeAudioData(arrayBuf);
         this.sfxBuffers[key] = audioBuf;
       } catch (err) {
-        console.warn(`Buffer SFX "${src}" menunggu interaksi user:`, err.message);
+        // File tidak ada / gagal dimuat: pakai suara sintesis bawaan
+        this.missing.add(key);
+        delete this.sfxHtmlElements[key];
       }
     }));
   },
@@ -481,8 +464,40 @@ const serverAudioManager = {
     }
   },
 
+  synth(type) {
+    const ctx = this.sharedCtx;
+    if (!ctx || ctx.state !== 'running') return;
+    const t = ctx.currentTime;
+    const tone = (freq, start, dur, vol, wave = 'sine', endFreq = null) => {
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.type = wave;
+      osc.frequency.setValueAtTime(freq, t + start);
+      if (endFreq) osc.frequency.exponentialRampToValueAtTime(endFreq, t + start + dur);
+      gain.gain.setValueAtTime(0.0001, t + start);
+      gain.gain.exponentialRampToValueAtTime(vol, t + start + 0.012);
+      gain.gain.exponentialRampToValueAtTime(0.0001, t + start + dur);
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.start(t + start);
+      osc.stop(t + start + dur + 0.02);
+    };
+    switch (type) {
+      case 'tap': tone(520, 0, 0.07, 0.22, 'triangle'); break;
+      case 'perfect': tone(880, 0, 0.12, 0.2); tone(1319, 0.05, 0.18, 0.16); break;
+      case 'slide': tone(420, 0, 0.16, 0.2, 'triangle', 980); break;
+      case 'miss': tone(180, 0, 0.18, 0.22, 'sawtooth', 90); break;
+      case 'scoreTick': tone(1400, 0, 0.03, 0.08, 'square'); break;
+      default: break;
+    }
+  },
+
   playSfx(type) {
     if (!appState.sfxEnabled) return;
+    if (this.missing.has(type)) {
+      this.synth(type);
+      return;
+    }
 
     const buffer = this.sfxBuffers[type];
     if (buffer && this.sharedCtx && this.sharedCtx.state === 'running') {
@@ -629,14 +644,13 @@ function revealLevelSection(songTitle) {
   if (caption) caption.textContent = `Lagu terpilih: ${songTitle}`;
   if (section) {
     section.classList.remove('hidden');
-    section.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
   }
 }
 
 function hideLevelSection() {
   const section = document.getElementById('levelActionSection');
   if (section) section.classList.add('hidden');
-  document.querySelectorAll('.song-card-3d').forEach((el) => el.classList.remove('selected'));
+  document.querySelectorAll('.song-card').forEach((el) => el.classList.remove('selected'));
   document.querySelectorAll('.history-item').forEach((el) => el.classList.remove('active-history'));
   appState.selectedSongId = '';
   appState.selectedSongSrc = '';
@@ -690,6 +704,7 @@ function getBuiltinHighScores(songId) {
 
 function buildScoreGridHtml(scores) {
   const levelKeys = ['easy', 'normal', 'hard', 'extreme'];
+  if (!levelKeys.some((lk) => (scores[lk] || 0) > 0)) return '';
   return levelKeys.map((lk) => {
     const cfg = APP_CONFIG.levels[lk];
     const val = scores[lk] || 0;
@@ -705,7 +720,7 @@ function buildScoreGridHtml(scores) {
 async function selectAndPrepareServerSong(song, cardEl, autoPlayPreview = true) {
   if (appState.isDownloadingSong) return;
 
-  document.querySelectorAll('.song-card-3d').forEach((el) => {
+  document.querySelectorAll('.song-card').forEach((el) => {
     el.classList.remove('selected');
   });
   if (cardEl) cardEl.classList.add('selected');
@@ -771,9 +786,12 @@ async function selectAndPrepareServerSong(song, cardEl, autoPlayPreview = true) 
   }
 }
 
+let songListRenderId = 0;
+
 async function loadBuiltinSongsFromJson() {
   const container = document.getElementById('builtinSongList');
   if (!container) return;
+  const renderId = ++songListRenderId; // cegah daftar ganda jika dipanggil bersamaan
 
   try {
     const res = await fetch(`${APP_CONFIG.serverAudio.songsManifest}?v=${Date.now()}`);
@@ -792,6 +810,7 @@ async function loadBuiltinSongsFromJson() {
       const song = songs[idx];
       const isSelected = Boolean(prevSelectedId && song.id === prevSelectedId);
       const existingBlob = await getServerSongBlob(song.src);
+      if (renderId !== songListRenderId) return;
       const isDownloaded = existingBlob && existingBlob.size > 1024;
       const scores = getBuiltinHighScores(song.id);
 
@@ -799,17 +818,18 @@ async function loadBuiltinSongsFromJson() {
         appState.serverSongBlob = isDownloaded ? existingBlob : null;
       }
 
+      const subtitleText = song.subtitle && !/auto sync/i.test(song.subtitle) ? song.subtitle : 'Lagu bawaan';
       const card = document.createElement('div');
-      card.className = `song-card-3d ${isSelected ? 'selected' : ''}`;
+      card.className = `song-card ${isSelected ? 'selected' : ''}`;
       card.dataset.song = song.id;
       card.dataset.src = song.src;
       card.innerHTML = `
         <div class="song-card-top">
           <div class="song-left">
-            <div class="album-3d ${song.color || 'c-cyan'}">${song.icon || '🎵'}</div>
+            <div class="album ${['c-cyan', 'c-purple', 'c-amber'].includes(song.color) ? song.color : 'c-cyan'}">${escapeHtml(song.icon || '🎵')}</div>
             <div class="song-info">
-              <strong>${song.title}</strong>
-              <span>${song.subtitle || 'Server Audio'}</span>
+              <strong>${escapeHtml(song.title)}</strong>
+              <span>${escapeHtml(subtitleText)}</span>
             </div>
           </div>
           <span class="status-pill ${isDownloaded ? 'ready' : ''}">
@@ -908,7 +928,7 @@ function renderLocalHistory() {
     div.className = `history-item ${isSelected ? 'active-history' : ''}`;
     div.innerHTML = `
       <div class="history-title-row">
-        <strong>🎵 ${item.title}</strong>
+        <strong>🎵 ${escapeHtml(item.title)}</strong>
         ${isSelected ? '<span class="history-active-pill">DIPILIH</span>' : ''}
       </div>
       <div class="history-scores-grid">
@@ -976,6 +996,9 @@ class RhythmEngine {
     this.lastFrameTime = 0;
     this.lastBassEnergy = 0;
     this.songDuration = 60;
+    this.leadSec = 0;
+    this.tailLeft = null;
+    this.delayNode = null;
 
     this.life = 100;
     this.score = 0;
@@ -1007,6 +1030,10 @@ class RhythmEngine {
   }
 
   bindInputs() {
+    window.addEventListener('resize', () => {
+      if (document.body.classList.contains('in-game')) this.resizeCanvas();
+    });
+
     this.canvas.addEventListener('pointerdown', (e) => {
       if (!this.isRunning || this.isPaused) return;
       e.preventDefault();
@@ -1157,6 +1184,7 @@ class RhythmEngine {
     this.lastSlideSpawnTime = 0;
     this.lastBassEnergy = 0;
     this.beatPulse = 0;
+    this.tailLeft = null;
 
     this.updateScoreHUD();
     this.updateLifeUI();
@@ -1215,10 +1243,25 @@ class RhythmEngine {
       this.analyser.smoothingTimeConstant = 0.55;
       this.dataArray = new Uint8Array(this.analyser.frequencyBinCount);
 
-      trackNode.connect(this.analyser);
-      this.analyser.connect(this.audioCtx.destination);
+      // Sinkronisasi: balok butuh waktu turun ke garis target, jadi suara yang didengar
+      // ditunda sepanjang waktu itu. Analisis beat membaca sinyal asli (tanpa tunda),
+      // sehingga balok tiba di garis tepat saat dentuman terdengar.
+      this.leadSec = Math.min(4.5, Math.max(0.3, (this.hitLineY + 35) / APP_CONFIG.levels[appState.selectedLevel].speed));
+      this.delayNode = this.audioCtx.createDelay(5);
+      this.delayNode.delayTime.value = this.leadSec;
 
-      this.audioEl.addEventListener('ended', () => this.finishGame(false));
+      const silent = this.audioCtx.createGain();
+      silent.gain.value = 0;
+      trackNode.connect(this.analyser);
+      this.analyser.connect(silent);
+      silent.connect(this.audioCtx.destination);
+
+      trackNode.connect(this.delayNode);
+      this.delayNode.connect(this.audioCtx.destination);
+
+      this.audioEl.addEventListener('ended', () => {
+        if (this.tailLeft === null) this.tailLeft = this.leadSec + 0.6;
+      });
       await this.audioEl.play();
       this.songDuration = this.audioEl.duration || 120;
       return true;
@@ -1237,6 +1280,9 @@ class RhythmEngine {
     if (this.animFrameId) cancelAnimationFrame(this.animFrameId);
     if (this.audioEl && !this.audioEl.paused) {
       this.audioEl.pause();
+    }
+    if (this.audioCtx && this.audioCtx.state === 'running') {
+      this.audioCtx.suspend().catch(() => {});
     }
     const pauseModal = document.getElementById('pauseModal');
     if (pauseModal) pauseModal.classList.remove('hidden');
@@ -1281,7 +1327,7 @@ class RhythmEngine {
       this.beatPulse = Math.min(1.0, (bassAvg / 245) + (energyDelta / 60));
     }
 
-    if (now - this.lastSpawnTime >= levelCfg.cooldown && bassAvg > levelCfg.beatThreshold && energyDelta > 7) {
+    if (this.tailLeft === null && now - this.lastSpawnTime >= levelCfg.cooldown && bassAvg > levelCfg.beatThreshold && energyDelta > 7) {
       const lane1 = Math.floor(Math.random() * 4);
       const roll = Math.random();
 
@@ -1581,9 +1627,15 @@ class RhythmEngine {
     const progBar = document.getElementById('songProgressBar');
     if (progBar) progBar.style.width = `${progressPct}%`;
 
-    if (elapsedSec >= this.songDuration) {
-      this.finishGame(false);
-      return;
+    if (this.tailLeft === null && elapsedSec >= this.songDuration - 0.05) {
+      this.tailLeft = this.leadSec + 0.6;
+    }
+    if (this.tailLeft !== null) {
+      this.tailLeft -= dt;
+      if (this.tailLeft <= 0) {
+        this.finishGame(false);
+        return;
+      }
     }
 
     this.processRealTimeBeat(timestamp);
@@ -1677,223 +1729,208 @@ class RhythmEngine {
     this.animFrameId = requestAnimationFrame((t) => this.loop(t));
   }
 
-  draw3DCapsuleNote(ctx, x, yCenter, w, h, mainColor, shadowColor) {
+  drawNote(ctx, x, yCenter, w, h, color) {
     const top = yCenter - h / 2;
-    const radius = h / 2;
-
-    ctx.fillStyle = shadowColor;
+    const r = h * 0.42;
+    ctx.save();
+    ctx.fillStyle = color;
+    ctx.shadowColor = color;
+    ctx.shadowBlur = 18;
     ctx.beginPath();
-    ctx.roundRect(x, top + 6, w, h, radius);
-    ctx.fill();
-
-    ctx.fillStyle = mainColor;
-    ctx.shadowColor = mainColor;
-    ctx.shadowBlur = 14;
-    ctx.beginPath();
-    ctx.roundRect(x, top, w, h, radius);
+    ctx.roundRect(x, top, w, h, r);
     ctx.fill();
     ctx.shadowBlur = 0;
 
-    ctx.fillStyle = 'rgba(255, 255, 255, 0.48)';
+    const sheen = ctx.createLinearGradient(0, top, 0, top + h);
+    sheen.addColorStop(0, 'rgba(255, 255, 255, 0.55)');
+    sheen.addColorStop(0.5, 'rgba(255, 255, 255, 0.06)');
+    sheen.addColorStop(1, 'rgba(40, 10, 50, 0.28)');
+    ctx.fillStyle = sheen;
     ctx.beginPath();
-    ctx.roundRect(x + 10, top + 5, w - 20, 8, 4);
+    ctx.roundRect(x, top, w, h, r);
     ctx.fill();
+
+    ctx.strokeStyle = 'rgba(255, 255, 255, 0.55)';
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    ctx.roundRect(x + 1.5, top + 1.5, w - 3, h - 3, r - 1);
+    ctx.stroke();
+    ctx.restore();
   }
 
   draw() {
     if (!this.ctx) return;
     const ctx = this.ctx;
-    const laneW = this.width / 4;
+    const W = this.width;
+    const H = this.height;
+    const laneW = W / 4;
     const levelCfg = APP_CONFIG.levels[appState.selectedLevel];
-    const levelColor = levelCfg.color;
-    const levelRgb = levelCfg.rgb;
+    const color = levelCfg.color;
+    const rgb = levelCfg.rgb;
+    const font = (weight, size) => `${weight} ${size}px "Baloo 2", Nunito, sans-serif`;
 
     ctx.save();
     if (this.shakeIntensity > 0.1) {
-      const dx = (Math.random() - 0.5) * this.shakeIntensity;
-      const dy = (Math.random() - 0.5) * this.shakeIntensity;
-      ctx.translate(dx, dy);
+      ctx.translate((Math.random() - 0.5) * this.shakeIntensity, (Math.random() - 0.5) * this.shakeIntensity);
     }
+    ctx.clearRect(0, 0, W, H);
 
-    ctx.clearRect(0, 0, this.width, this.height);
-
-    // 1. Audio Visualizer Latar Belakang
-    const barCount = this.visualizerBars.length;
-    const barW = this.width / barCount;
-    for (let i = 0; i < barCount; i++) {
-      const barH = this.visualizerBars[i] * 1.4;
-      ctx.fillStyle = `rgba(${levelRgb}, 0.08)`;
-      ctx.fillRect(i * barW + 2, this.hitLineY - barH, barW - 4, barH);
-    }
-
-    // 2. Angka Combo / Miss Streak
-    if (this.combo > 1) {
-      ctx.save();
-      ctx.translate(this.width / 2, this.height * 0.28);
-      ctx.scale(this.comboPulse, this.comboPulse);
-
-      ctx.font = '900 84px Outfit, sans-serif';
-      ctx.textAlign = 'center';
-      ctx.strokeStyle = `rgba(${levelRgb}, 0.55)`;
-      ctx.lineWidth = 3;
-      ctx.strokeText(`${this.combo}`, 0, 0);
-
-      ctx.fillStyle = `rgba(${levelRgb}, 0.34)`;
-      ctx.fillText(`${this.combo}`, 0, 0);
-
-      ctx.font = '900 15px Outfit, sans-serif';
-      ctx.fillStyle = `rgba(255, 255, 255, 0.45)`;
-      ctx.fillText('COMBO', 0, 24);
-      ctx.restore();
-    } else if (this.missStreak > 1) {
-      ctx.save();
-      ctx.translate(this.width / 2, this.height * 0.28);
-      ctx.scale(this.comboPulse, this.comboPulse);
-
-      ctx.font = '900 72px Outfit, sans-serif';
-      ctx.textAlign = 'center';
-      ctx.strokeStyle = 'rgba(244, 63, 94, 0.6)';
-      ctx.lineWidth = 3;
-      ctx.strokeText(`${this.missStreak}x`, 0, 0);
-
-      ctx.fillStyle = 'rgba(244, 63, 94, 0.32)';
-      ctx.fillText(`${this.missStreak}x`, 0, 0);
-
-      ctx.font = '900 14px Outfit, sans-serif';
-      ctx.fillStyle = 'rgba(244, 63, 94, 0.65)';
-      ctx.fillText('MISS STREAK', 0, 22);
-      ctx.restore();
-    }
-
-    // 3. Jalur & Sorotan Ketukan
+    // Jalur: belang halus bergantian, pembatas tipis
     for (let i = 0; i < 4; i++) {
-      const x = i * laneW;
-      if (this.laneFlashes[i] > 0) {
-        const grad = ctx.createLinearGradient(0, this.hitLineY - 220, 0, this.height);
-        grad.addColorStop(0, `rgba(${levelRgb}, 0)`);
-        grad.addColorStop(1, `rgba(${levelRgb}, ${this.laneFlashes[i] * 0.34})`);
-        ctx.fillStyle = grad;
-        ctx.fillRect(x, 0, laneW, this.height);
+      if (i % 2 === 1) {
+        ctx.fillStyle = 'rgba(255, 244, 232, 0.028)';
+        ctx.fillRect(i * laneW, 0, laneW, H);
       }
-
       if (i > 0) {
-        ctx.strokeStyle = 'rgba(255, 255, 255, 0.035)';
-        ctx.lineWidth = 1;
-        ctx.beginPath();
-        ctx.moveTo(x, 0);
-        ctx.lineTo(x, this.height);
-        ctx.stroke();
+        ctx.fillStyle = 'rgba(255, 244, 232, 0.07)';
+        ctx.fillRect(i * laneW - 0.5, 0, 1, H);
       }
     }
 
-    // 4. Tuts Bawah Menyatu
+    // Visualizer musik: batang bulat di belakang
+    const barCount = this.visualizerBars.length;
+    const barW = W / barCount;
+    for (let i = 0; i < barCount; i++) {
+      const barH = Math.min(this.visualizerBars[i] * 1.5, this.hitLineY * 0.7);
+      if (barH < 3) continue;
+      ctx.fillStyle = `rgba(${rgb}, 0.11)`;
+      ctx.beginPath();
+      ctx.roundRect(i * barW + 3, this.hitLineY - barH, barW - 6, barH, 7);
+      ctx.fill();
+    }
+
+    // Angka kombo / rentetan miss
+    const showMiss = this.combo <= 1 && this.missStreak > 1;
+    if (this.combo > 1 || showMiss) {
+      ctx.save();
+      ctx.translate(W / 2, H * 0.27);
+      ctx.scale(this.comboPulse, this.comboPulse);
+      ctx.textAlign = 'center';
+      const label = showMiss ? `${this.missStreak}x` : `${this.combo}`;
+      ctx.font = font(800, 88);
+      ctx.fillStyle = showMiss ? 'rgba(255, 93, 122, 0.3)' : 'rgba(255, 244, 232, 0.14)';
+      ctx.fillText(label, 0, 0);
+      ctx.font = font(700, 15);
+      ctx.fillStyle = showMiss ? 'rgba(255, 93, 122, 0.7)' : 'rgba(255, 244, 232, 0.45)';
+      ctx.fillText(showMiss ? 'Miss beruntun' : 'Kombo', 0, 24);
+      ctx.restore();
+    }
+
+    // Sorotan jalur saat diketuk
+    for (let i = 0; i < 4; i++) {
+      if (this.laneFlashes[i] > 0) {
+        const grad = ctx.createLinearGradient(0, this.hitLineY - 260, 0, this.hitLineY + 40);
+        grad.addColorStop(0, `rgba(${rgb}, 0)`);
+        grad.addColorStop(1, `rgba(${rgb}, ${this.laneFlashes[i] * 0.32})`);
+        ctx.fillStyle = grad;
+        ctx.fillRect(i * laneW, this.hitLineY - 260, laneW, 300);
+      }
+    }
+
+    // Tombol ketuk di bawah
     const keyLabels = ['D', 'F', 'J', 'K'];
     for (let i = 0; i < 4; i++) {
-      const padW = laneW - 2;
-      const padH = 68;
+      const padW = laneW - 12;
+      const padH = 58;
       const cx = i * laneW + laneW / 2;
-      const cy = this.hitLineY + 22;
+      const cy = this.hitLineY + 42;
+      const pressed = this.laneFlashes[i] > 0.15;
 
       ctx.save();
       ctx.translate(cx, cy);
       ctx.scale(this.padPressScale[i], this.padPressScale[i]);
-
-      ctx.fillStyle = this.laneFlashes[i] > 0.15
-        ? `rgba(${levelRgb}, 0.42)`
-        : 'rgba(255, 255, 255, 0.07)';
-
+      if (pressed) {
+        ctx.shadowColor = color;
+        ctx.shadowBlur = 20;
+      }
+      ctx.fillStyle = pressed ? `rgba(${rgb}, 0.5)` : 'rgba(255, 244, 232, 0.07)';
       ctx.beginPath();
-      ctx.roundRect(-padW / 2, -padH / 2, padW, padH, 16);
+      ctx.roundRect(-padW / 2, -padH / 2, padW, padH, 20);
       ctx.fill();
-
-      ctx.fillStyle = 'rgba(255, 255, 255, 0.25)';
-      ctx.font = 'bold 13px Outfit, sans-serif';
+      ctx.shadowBlur = 0;
+      ctx.strokeStyle = pressed ? `rgba(${rgb}, 0.95)` : 'rgba(255, 244, 232, 0.16)';
+      ctx.lineWidth = 2;
+      ctx.stroke();
+      ctx.fillStyle = pressed ? '#ffffff' : 'rgba(255, 244, 232, 0.3)';
+      ctx.font = font(700, 15);
       ctx.textAlign = 'center';
       ctx.fillText(keyLabels[i], 0, 5);
       ctx.restore();
     }
 
-    // 5. Garis Target Berkedip Sesuai Bass
-    const pulseAlpha = 0.22 + this.beatPulse * 0.72;
-    const pulseWidth = 2 + this.beatPulse * 3.5;
+    // Garis target berdenyut mengikuti bass
     ctx.save();
-    ctx.strokeStyle = `rgba(${levelRgb}, ${pulseAlpha})`;
-    ctx.lineWidth = pulseWidth;
+    ctx.strokeStyle = `rgba(${rgb}, ${0.28 + this.beatPulse * 0.7})`;
+    ctx.lineWidth = 2 + this.beatPulse * 3.5;
+    ctx.lineCap = 'round';
     if (this.beatPulse > 0.15) {
-      ctx.shadowColor = levelColor;
+      ctx.shadowColor = color;
       ctx.shadowBlur = 16 * this.beatPulse;
     }
     ctx.beginPath();
-    ctx.moveTo(0, this.hitLineY);
-    ctx.lineTo(this.width, this.hitLineY);
+    ctx.moveTo(8, this.hitLineY);
+    ctx.lineTo(W - 8, this.hitLineY);
     ctx.stroke();
     ctx.restore();
 
-    // 6. Gambar Balok Nada 3D Kapsul Lebar
+    // Balok nada
     for (const note of this.notes) {
       if (note.type === 'slide') {
-        const x = note.lane * laneW + 2;
-        const w = laneW * 2 - 4;
+        const x = note.lane * laneW + 3;
+        const w = laneW * 2 - 6;
         const h = 46;
-
-        const trailGrad = ctx.createLinearGradient(0, note.y - 70, 0, note.y);
-        trailGrad.addColorStop(0, 'rgba(250, 204, 21, 0)');
-        trailGrad.addColorStop(1, 'rgba(250, 204, 21, 0.22)');
-        ctx.fillStyle = trailGrad;
-        ctx.fillRect(x + 6, note.y - 70, w - 12, 70);
-
-        this.draw3DCapsuleNote(ctx, x, note.y, w, h, '#facc15', '#a16207');
-
-        ctx.fillStyle = '#070913';
-        ctx.font = '900 15px Outfit, sans-serif';
+        const trail = ctx.createLinearGradient(0, note.y - 70, 0, note.y);
+        trail.addColorStop(0, 'rgba(196, 181, 253, 0)');
+        trail.addColorStop(1, 'rgba(196, 181, 253, 0.25)');
+        ctx.fillStyle = trail;
+        ctx.fillRect(x + 8, note.y - 70, w - 16, 70);
+        this.drawNote(ctx, x, note.y, w, h, '#c4b5fd');
+        ctx.fillStyle = '#2a1850';
+        ctx.font = font(800, 18);
         ctx.textAlign = 'center';
-        ctx.fillText('< < <  > > >', x + w / 2, note.y + 5.5);
+        ctx.fillText('‹‹‹   ›››', x + w / 2, note.y + 6);
         continue;
       }
 
-      const x = note.lane * laneW + 2;
-      const w = laneW - 4;
+      const x = note.lane * laneW + 4;
+      const w = laneW - 8;
       const h = 44;
 
       if (note.type === 'hold') {
         const headY = note.holding ? this.hitLineY : note.y;
         const tailY = note.y - note.length;
         const bodyH = Math.max(0, headY - tailY);
-
-        ctx.fillStyle = `rgba(${levelRgb}, 0.34)`;
+        ctx.fillStyle = `rgba(${rgb}, 0.3)`;
         ctx.beginPath();
-        ctx.roundRect(x + 6, tailY, w - 12, bodyH, 16);
+        ctx.roundRect(x + 8, tailY, w - 16, bodyH, 18);
         ctx.fill();
-
-        ctx.fillStyle = 'rgba(255, 255, 255, 0.42)';
-        ctx.fillRect(x + w / 2 - 2.5, tailY + 8, 5, Math.max(0, bodyH - 16));
-
-        this.draw3DCapsuleNote(ctx, x, headY, w, h, levelColor, 'rgba(0, 0, 0, 0.55)');
-
-        ctx.fillStyle = '#070913';
-        ctx.font = '900 11px Outfit, sans-serif';
+        ctx.fillStyle = 'rgba(255, 255, 255, 0.4)';
+        ctx.beginPath();
+        ctx.roundRect(x + w / 2 - 2.5, tailY + 8, 5, Math.max(0, bodyH - 16), 3);
+        ctx.fill();
+        this.drawNote(ctx, x, headY, w, h, color);
+        ctx.fillStyle = '#2a1850';
+        ctx.font = font(800, 13);
         ctx.textAlign = 'center';
-        ctx.fillText('HOLD', x + w / 2, headY + 4.5);
+        ctx.fillText('Tahan', x + w / 2, headY + 5);
       } else {
-        const trailGrad = ctx.createLinearGradient(0, note.y - 75, 0, note.y);
-        trailGrad.addColorStop(0, `rgba(${levelRgb}, 0)`);
-        trailGrad.addColorStop(1, `rgba(${levelRgb}, 0.28)`);
-        ctx.fillStyle = trailGrad;
-        ctx.fillRect(x + 6, note.y - 75, w - 12, 75);
-
-        this.draw3DCapsuleNote(ctx, x, note.y, w, h, levelColor, 'rgba(0, 0, 0, 0.55)');
+        const trail = ctx.createLinearGradient(0, note.y - 75, 0, note.y);
+        trail.addColorStop(0, `rgba(${rgb}, 0)`);
+        trail.addColorStop(1, `rgba(${rgb}, 0.26)`);
+        ctx.fillStyle = trail;
+        ctx.fillRect(x + 8, note.y - 75, w - 16, 75);
+        this.drawNote(ctx, x, note.y, w, h, color);
       }
     }
 
-    // 7. Shockwaves & Partikel
+    // Gelombang dan percikan
     for (const sw of this.shockwaves) {
       ctx.beginPath();
       ctx.arc(sw.x, sw.y, sw.radius, 0, Math.PI * 2);
-      ctx.strokeStyle = `rgba(${levelRgb}, ${Math.max(0, sw.alpha)})`;
+      ctx.strokeStyle = `rgba(${rgb}, ${Math.max(0, sw.alpha)})`;
       ctx.lineWidth = 3;
       ctx.stroke();
     }
-
     for (const p of this.particles) {
       ctx.globalAlpha = Math.max(0, p.alpha);
       ctx.fillStyle = p.color;
@@ -2174,11 +2211,11 @@ function setupUIEvents() {
       serverAudioManager.playSfx('buttonClick');
       appState.bgmEnabled = !appState.bgmEnabled;
       if (appState.bgmEnabled) {
-        bgmBtn.textContent = '🎵 ON';
+        bgmBtn.textContent = '🎵 On';
         bgmBtn.classList.remove('muted');
         serverAudioManager.startMenuTheme();
       } else {
-        bgmBtn.textContent = '🔇 OFF';
+        bgmBtn.textContent = '🔇 Off';
         bgmBtn.classList.add('muted');
         serverAudioManager.stopMenuTheme();
       }
@@ -2234,10 +2271,10 @@ function setupUIEvents() {
     });
   }
 
-  document.querySelectorAll('.level-btn-3d').forEach((card) => {
+  document.querySelectorAll('.level-row').forEach((card) => {
     card.addEventListener('click', () => {
       serverAudioManager.playSfx('buttonClick');
-      document.querySelectorAll('.level-btn-3d').forEach((c) => c.classList.remove('selected'));
+      document.querySelectorAll('.level-row').forEach((c) => c.classList.remove('selected'));
       card.classList.add('selected');
       appState.selectedLevel = card.dataset.level;
       applyThemeColor(appState.selectedLevel);
@@ -2267,7 +2304,7 @@ function setupUIEvents() {
       }
 
       if (appState.selectedSource === 'builtin' && !appState.serverSongBlob) {
-        const selectedCard = document.querySelector('.song-card-3d.selected');
+        const selectedCard = document.querySelector('.song-card.selected');
         if (selectedCard) {
           await selectAndPrepareServerSong(
             {
@@ -2372,58 +2409,31 @@ function setupUIEvents() {
     });
   }
 
-  // Aktivasi Lisensi dari Modal Upgrade / Paywall
+  // Aktivasi lisensi (modal paywall dan pengaturan memakai fungsi yang sama)
   const activateBtn = document.getElementById('activateBtn');
   if (activateBtn) {
-    activateBtn.addEventListener('click', async () => {
+    activateBtn.addEventListener('click', () => {
       serverAudioManager.playSfx('buttonClick');
       const input = document.getElementById('licenseInput');
-      const code = input ? input.value.trim().toUpperCase() : '';
+      activateLicense(input ? input.value.trim().toUpperCase() : '', activateBtn, 'Aktifkan sekarang', 'Memeriksa kode...');
+    });
+  }
 
-      if (!code) {
-        alert('Masukkan kode aktivasi dari Lynk.id terlebih dahulu.');
-        return;
-      }
+  const settingsActivateBtn = document.getElementById('settingsActivateBtn');
+  if (settingsActivateBtn) {
+    settingsActivateBtn.addEventListener('click', () => {
+      serverAudioManager.playSfx('buttonClick');
+      const input = document.getElementById('settingsLicenseInput');
+      activateLicense(input ? input.value.trim().toUpperCase() : '', settingsActivateBtn, 'Aktifkan', 'Cek...');
+    });
+  }
 
-      activateBtn.disabled = true;
-      activateBtn.textContent = 'Memeriksa Kode...';
-
-      try {
-        const response = await fetch(APP_CONFIG.licenseApiUrl, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            licenseCode: code,
-            deviceId: appState.deviceId
-          })
-        });
-
-        const data = await response.json();
-
-        if (data.valid) {
-          appState.isActivated = true;
-          await setPersistedValue('isActivated', 'true');
-          await setPersistedValue('licenseCode', code);
-          updateTrialUI();
-          const settingsBox = document.getElementById('settingsLicenseBox');
-          if (settingsBox) {
-            settingsBox.innerHTML = `
-              <div style="color: #34d399; font-weight: 800; font-size: 13px;">★ Lisensi Aktif Permanen</div>
-              <div style="color: #94a3b8; font-size: 11px; margin-top: 4px;">Perangkat ini sudah terdaftar permanen.</div>
-            `;
-          }
-          const paywallModal = document.getElementById('paywallModal');
-          if (paywallModal) paywallModal.classList.add('hidden');
-          alert(data.message);
-        } else {
-          alert(data.message || 'Kode aktivasi tidak valid.');
-        }
-      } catch (err) {
-        alert('Gagal terhubung ke server aktivasi. Pastikan koneksi internet aktif.');
-      } finally {
-        activateBtn.disabled = false;
-        activateBtn.textContent = 'Aktifkan Sekarang';
-      }
+  const closeEarlyBtn = document.getElementById('closeEarlyUpgradeBtn');
+  if (closeEarlyBtn) {
+    closeEarlyBtn.addEventListener('click', () => {
+      serverAudioManager.playSfx('buttonClick');
+      const paywallModal = document.getElementById('paywallModal');
+      if (paywallModal) paywallModal.classList.add('hidden');
     });
   }
 }
@@ -2435,114 +2445,46 @@ function isRunningAsInstalledPWA() {
   return window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone === true;
 }
 
-function injectLicenseFormInSettings() {
-  const settingsModal = document.getElementById('settingsModal');
-  if (!settingsModal) return;
-  if (document.getElementById('settingsLicenseBox')) return;
+function syncLicenseUI() {
+  const form = document.getElementById('licenseFormArea');
+  const active = document.getElementById('licenseActiveArea');
+  if (form) form.classList.toggle('hidden', appState.isActivated);
+  if (active) active.classList.toggle('hidden', !appState.isActivated);
+}
 
-  const modalBox = settingsModal.querySelector('.modal-surface-3d') || settingsModal.firstElementChild;
-  const deviceInfoEl = modalBox ? modalBox.querySelector('.device-info') : null;
-  if (!modalBox) return;
-
-  const box = document.createElement('div');
-  box.id = 'settingsLicenseBox';
-  box.style.cssText = `
-    background: rgba(255, 255, 255, 0.05);
-    border: 1px solid rgba(56, 189, 248, 0.35);
-    border-radius: 14px;
-    padding: 12px;
-    margin: 12px 0 8px 0;
-    text-align: left;
-    box-sizing: border-box;
-    width: 100%;
-  `;
-
-  if (appState.isActivated) {
-    box.innerHTML = `
-      <div style="color: #34d399; font-weight: 800; font-size: 13px;">★ Lisensi Aktif Permanen</div>
-      <div style="color: #94a3b8; font-size: 11px; margin-top: 4px;">Perangkat ini sudah terdaftar permanen.</div>
-    `;
-  } else {
-    box.innerHTML = `
-      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px; gap:8px;">
-        <label for="settingsLicenseInput" style="font-size:12px; font-weight:700; color:#e2e8f0; margin:0;">
-          🔑 Lisensi Permanen
-        </label>
-        <a href="${APP_CONFIG.lynkStoreUrl}" target="_blank" rel="noopener" style="
-          background: linear-gradient(135deg, #34d399, #10b981); color: #070913;
-          text-decoration: none; font-size: 11px; font-weight: 800;
-          padding: 5px 10px; border-radius: 8px; white-space: nowrap;
-        ">🛒 Beli Kode</a>
-      </div>
-      <div style="display:grid; grid-template-columns: 1fr auto; gap:8px; align-items:center; width:100%; box-sizing:border-box;">
-        <input type="text" id="settingsLicenseInput" placeholder="ZB-PRO-001" style="
-          width: 100% !important; min-width: 0 !important; max-width: 100% !important; box-sizing: border-box !important;
-          background: rgba(7, 9, 19, 0.8); border: 1px solid rgba(255,255,255,0.2);
-          border-radius: 10px; padding: 9px 10px; color: #fff; font-size: 13px; text-transform: uppercase;
-        " />
-        <button id="settingsActivateBtn" type="button" style="
-          width: auto !important; box-sizing: border-box !important;
-          background: #38bdf8; color: #070913; border: none; border-radius: 10px;
-          padding: 9px 14px; font-weight: 800; font-size: 12px; cursor: pointer; white-space: nowrap;
-        ">Aktifkan</button>
-      </div>
-    `;
+async function activateLicense(code, btn, idleText, busyText) {
+  if (!code) {
+    alert('Masukkan kode aktivasi dari Lynk.id terlebih dahulu.');
+    return;
   }
 
-  // Taruh persis di atas elemen ID Perangkat (.device-info)
-  if (deviceInfoEl) {
-    modalBox.insertBefore(box, deviceInfoEl);
-  } else {
-    modalBox.appendChild(box);
-  }
+  btn.disabled = true;
+  btn.textContent = busyText;
 
-  const sBtn = document.getElementById('settingsActivateBtn');
-  const sInput = document.getElementById('settingsLicenseInput');
-  if (sBtn && sInput) {
-    sBtn.addEventListener('click', async () => {
-      serverAudioManager.playSfx('buttonClick');
-      const code = sInput.value.trim().toUpperCase();
-      if (!code) {
-        alert('Masukkan kode aktivasi terlebih dahulu.');
-        return;
-      }
-
-      sBtn.disabled = true;
-      sBtn.textContent = 'Cek...';
-
-      try {
-        const res = await fetch(APP_CONFIG.licenseApiUrl, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            licenseCode: code,
-            deviceId: appState.deviceId
-          })
-        });
-        const data = await res.json();
-
-        if (data.valid) {
-          appState.isActivated = true;
-          await setPersistedValue('isActivated', 'true');
-          await setPersistedValue('licenseCode', code);
-          updateTrialUI();
-          box.innerHTML = `
-            <div style="color: #34d399; font-weight: 800; font-size: 13px;">★ Lisensi Aktif Permanen</div>
-            <div style="color: #94a3b8; font-size: 11px; margin-top: 4px;">Perangkat ini sudah terdaftar permanen.</div>
-          `;
-          alert(data.message);
-        } else {
-          alert(data.message || 'Kode aktivasi tidak valid.');
-        }
-      } catch (err) {
-        alert('Gagal terhubung ke server Cloudflare. Periksa koneksi internet.');
-      } finally {
-        if (document.body.contains(sBtn)) {
-          sBtn.disabled = false;
-          sBtn.textContent = 'Aktifkan';
-        }
-      }
+  try {
+    const response = await fetch(APP_CONFIG.licenseApiUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ licenseCode: code, deviceId: appState.deviceId })
     });
+    const data = await response.json();
+
+    if (data.valid) {
+      appState.isActivated = true;
+      await setPersistedValue('isActivated', 'true');
+      await setPersistedValue('licenseCode', code);
+      updateTrialUI();
+      const paywallModal = document.getElementById('paywallModal');
+      if (paywallModal) paywallModal.classList.add('hidden');
+      alert(data.message || 'Lisensi berhasil diaktifkan.');
+    } else {
+      alert(data.message || 'Kode aktivasi tidak valid.');
+    }
+  } catch (err) {
+    alert('Gagal terhubung ke server aktivasi. Pastikan koneksi internet aktif.');
+  } finally {
+    btn.disabled = false;
+    btn.textContent = idleText;
   }
 }
 
@@ -2553,10 +2495,10 @@ async function triggerInstallPromptAction() {
     const { outcome } = await deferredPrompt.userChoice;
     deferredPrompt = null;
     if (outcome === 'accepted') {
-      const banner = document.getElementById('zenbeatInstallBanner');
-      const installWrapper = document.getElementById('installWrapper');
-      if (banner) banner.remove();
-      if (installWrapper) installWrapper.classList.add('hidden');
+      ['installBanner', 'installWrapper'].forEach((id) => {
+        const el = document.getElementById(id);
+        if (el) el.classList.add('hidden');
+      });
       return true;
     }
     return false;
@@ -2564,72 +2506,37 @@ async function triggerInstallPromptAction() {
 
   const isIOS = /iphone|ipad|ipod/i.test(navigator.userAgent);
   if (isIOS) {
-    alert('Cara Pasang ZenBeat di iPhone/iPad:\n1. Ketuk ikon Share (kotak panah ke atas) di bawah Safari.\n2. Pilih "Add to Home Screen" (Tambah ke Layar Utama).');
+    alert('Cara pasang ZenBeat di iPhone/iPad:\n1. Ketuk ikon Share (kotak dengan panah ke atas) di Safari.\n2. Pilih "Add to Home Screen" (Tambah ke Layar Utama).');
   } else {
-    alert('Cara Pasang ZenBeat ke Layar Utama:\n1. Ketuk ikon titik tiga (⋮) di pojok kanan atas browser.\n2. Pilih "Install aplikasi" atau "Tambahkan ke Layar utama".');
+    alert('Cara pasang ZenBeat ke layar utama:\n1. Ketuk ikon titik tiga (⋮) di pojok kanan atas browser.\n2. Pilih "Install aplikasi" atau "Tambahkan ke layar utama".');
   }
   return false;
 }
 
+// Jendela ajakan pasang hanya muncul sekali, sebelum tutorial pertama
 function showFirstTimeInstallBeforeTutorial() {
   return new Promise((resolve) => {
-    if (isRunningAsInstalledPWA()) {
+    const seenKey = APP_CONFIG.storageKeyPrefix + 'install_prompt_seen';
+    const modal = document.getElementById('installModal');
+    if (!modal || isRunningAsInstalledPWA() || localStorage.getItem(seenKey) === 'true') {
       resolve();
       return;
     }
 
-    const tutorialModal = document.getElementById('tutorialModal');
-    if (tutorialModal) tutorialModal.classList.add('hidden');
-
-    let installModal = document.getElementById('firstTimeInstallModal');
-    if (!installModal) {
-      installModal = document.createElement('div');
-      installModal.id = 'firstTimeInstallModal';
-      installModal.style.cssText = `
-        position: fixed; inset: 0; z-index: 9999;
-        background: rgba(7, 9, 19, 0.92); backdrop-filter: blur(8px);
-        display: flex; align-items: center; justify-content: center; padding: 20px;
-      `;
-      installModal.innerHTML = `
-        <div style="
-          width: 100%; max-width: 360px; background: #11162a;
-          border: 1px solid rgba(56, 189, 248, 0.45); border-radius: 22px;
-          padding: 24px 20px; text-align: center; color: #fff;
-          box-shadow: 0 18px 40px rgba(0,0,0,0.6);
-        ">
-          <div style="font-size: 46px; margin-bottom: 10px;">📲</div>
-          <h3 style="margin: 0 0 8px 0; font-size: 20px; font-weight: 800;">Pasang Aplikasi ZenBeat</h3>
-          <p style="margin: 0 0 18px 0; font-size: 13px; color: #cbd5e1; line-height: 1.5;">
-            Install ZenBeat ke layar utama agar layar penuh tanpa gangguan browser dan bisa dimainkan offline!
-          </p>
-          <button id="modalInstallNowBtn" type="button" style="
-            width: 100%; background: linear-gradient(135deg, #38bdf8, #818cf8);
-            color: #070913; border: none; border-radius: 14px; padding: 13px;
-            font-weight: 900; font-size: 14px; cursor: pointer; margin-bottom: 10px;
-          ">Install Aplikasi Sekarang</button>
-          <button id="modalSkipInstallBtn" type="button" style="
-            width: 100%; background: rgba(255,255,255,0.07);
-            color: #94a3b8; border: 1px solid rgba(255,255,255,0.12);
-            border-radius: 12px; padding: 10px; font-weight: 700; font-size: 12px; cursor: pointer;
-          ">Lanjut di Browser</button>
-        </div>
-      `;
-      document.body.appendChild(installModal);
-    }
-
-    const closeAndContinueToTutorial = () => {
-      installModal.remove();
+    const finish = () => {
+      localStorage.setItem(seenKey, 'true');
+      modal.classList.add('hidden');
       resolve();
     };
 
+    modal.classList.remove('hidden');
     document.getElementById('modalInstallNowBtn').onclick = async () => {
       await triggerInstallPromptAction();
-      closeAndContinueToTutorial();
+      finish();
     };
-
     document.getElementById('modalSkipInstallBtn').onclick = () => {
       serverAudioManager.playSfx('buttonClick');
-      closeAndContinueToTutorial();
+      finish();
     };
   });
 }
@@ -2637,60 +2544,22 @@ function showFirstTimeInstallBeforeTutorial() {
 function ensureInstallUI() {
   const installWrapper = document.getElementById('installWrapper');
   const installBtn = document.getElementById('installBtn');
-  const settingsBtn = document.getElementById('openSettingsBtn');
-
-  if (settingsBtn) {
-    settingsBtn.classList.remove('hidden');
-    settingsBtn.style.display = '';
-  }
+  const banner = document.getElementById('installBanner');
+  const bannerBtn = document.getElementById('installBannerBtn');
 
   if (isRunningAsInstalledPWA()) {
-    const existingBanner = document.getElementById('zenbeatInstallBanner');
-    if (existingBanner) existingBanner.remove();
+    if (banner) banner.classList.add('hidden');
     if (installWrapper) installWrapper.classList.add('hidden');
     return;
   }
 
-  if (installWrapper) {
-    installWrapper.classList.remove('hidden');
-    installWrapper.style.display = 'block';
-  }
-  if (installBtn) {
-    installBtn.classList.remove('hidden');
-    installBtn.style.display = 'block';
-    installBtn.onclick = triggerInstallPromptAction;
-  }
+  if (installWrapper) installWrapper.classList.remove('hidden');
+  if (installBtn) installBtn.onclick = triggerInstallPromptAction;
 
-  let banner = document.getElementById('zenbeatInstallBanner');
-  if (!banner) {
-    banner = document.createElement('div');
-    banner.id = 'zenbeatInstallBanner';
-    banner.style.cssText = `
-      display: flex; align-items: center; justify-content: space-between; gap: 10px;
-      background: linear-gradient(135deg, rgba(56, 189, 248, 0.22), rgba(168, 85, 247, 0.22));
-      border: 1px solid rgba(56, 189, 248, 0.55); border-radius: 14px;
-      padding: 10px 14px; margin: 10px 16px; color: #ffffff; font-size: 13px;
-      box-shadow: 0 4px 15px rgba(0,0,0,0.25); position: relative; z-index: 20;
-    `;
-    banner.innerHTML = `
-      <span>📲 <strong>Pasang Aplikasi ZenBeat</strong> (Layar Penuh & Offline)</span>
-      <button id="zenbeatFrontInstallBtn" type="button" style="
-        background: #38bdf8; color: #070913; border: none; border-radius: 10px;
-        padding: 8px 14px; font-weight: 800; font-size: 12px; cursor: pointer; white-space: nowrap;
-      ">Install</button>
-    `;
-
-    const menuScreen = document.getElementById('menuScreen');
-    const headerEl = menuScreen ? menuScreen.querySelector('header') : null;
-    if (headerEl && headerEl.parentNode) {
-      headerEl.parentNode.insertBefore(banner, headerEl.nextSibling);
-    } else if (menuScreen) {
-      menuScreen.prepend(banner);
-    }
-  }
-
-  const frontBtn = document.getElementById('zenbeatFrontInstallBtn');
-  if (frontBtn) frontBtn.onclick = triggerInstallPromptAction;
+  // Spanduk hanya muncul jika browser benar-benar bisa memasang (atau di iOS)
+  const canPrompt = Boolean(deferredPrompt) || /iphone|ipad|ipod/i.test(navigator.userAgent);
+  if (banner) banner.classList.toggle('hidden', !canPrompt);
+  if (bannerBtn) bannerBtn.onclick = triggerInstallPromptAction;
 }
 
 window.addEventListener('beforeinstallprompt', (e) => {
@@ -2700,12 +2569,10 @@ window.addEventListener('beforeinstallprompt', (e) => {
 });
 
 window.addEventListener('appinstalled', () => {
-  const banner = document.getElementById('zenbeatInstallBanner');
-  const installWrapper = document.getElementById('installWrapper');
-  const firstInstallModal = document.getElementById('firstTimeInstallModal');
-  if (banner) banner.remove();
-  if (installWrapper) installWrapper.classList.add('hidden');
-  if (firstInstallModal) firstInstallModal.remove();
+  ['installBanner', 'installWrapper', 'installModal'].forEach((id) => {
+    const el = document.getElementById(id);
+    if (el) el.classList.add('hidden');
+  });
   deferredPrompt = null;
 });
 
@@ -2725,7 +2592,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     await initTrialAndDevice();
     await loadBuiltinSongsFromJson();
     setupUIEvents();
-    injectLicenseFormInSettings();
+    syncLicenseUI();
     ensureInstallUI();
 
     // Tampilkan layar Install Aplikasi dulu sebelum Tutorial muncul

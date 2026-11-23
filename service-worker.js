@@ -1,40 +1,53 @@
-const CACHE_NAME = 'zenbeat-v100';
+const CACHE_NAME = 'zenbeat-v200';
 const CORE_ASSETS = [
   './',
   './index.html',
   './style.css',
   './app.js',
-  './manifest.json'
+  './manifest.json',
+  './assets/icons/icon.svg',
+  './assets/icons/icon-192.png',
+  './assets/icons/icon-512.png',
+  './assets/audio/songs/songs.json'
 ];
 
 self.addEventListener('install', (event) => {
   self.skipWaiting();
+  // Satu per satu agar satu file gagal tidak membatalkan seluruh precache
   event.waitUntil(
-    caches.open(CACHE_NAME).then((cache) => cache.addAll(CORE_ASSETS).catch(() => {}))
+    caches.open(CACHE_NAME).then((cache) =>
+      Promise.all(CORE_ASSETS.map((url) => cache.add(url).catch(() => {})))
+    )
   );
 });
 
 self.addEventListener('activate', (event) => {
   event.waitUntil(
-    caches.keys().then((keys) =>
-      Promise.all(keys.filter((k) => k !== CACHE_NAME).map((k) => caches.delete(k)))
-    ).then(() => self.clients.claim())
+    caches.keys()
+      .then((keys) => Promise.all(keys.filter((k) => k !== CACHE_NAME).map((k) => caches.delete(k))))
+      .then(() => self.clients.claim())
   );
 });
 
-// Network-First: Selalu ambil versi terbaru jika online, pakai cache jika offline
+// File audio besar tidak disimpan di Cache Storage: lagu sudah disimpan app.js di IndexedDB.
+const isAudio = (url) => /\.(mp3|wav|ogg|m4a)(\?|$)/i.test(url);
+
+// Network-first: ambil versi terbaru saat online, pakai cache saat offline.
 self.addEventListener('fetch', (event) => {
-  if (event.request.method !== 'GET') return;
+  const req = event.request;
+  if (req.method !== 'GET' || req.headers.has('range')) return;
+
+  const sameOrigin = req.url.startsWith(self.location.origin);
 
   event.respondWith(
-    fetch(event.request)
-      .then((networkResponse) => {
-        if (networkResponse && networkResponse.status === 200 && event.request.url.startsWith(self.location.origin)) {
-          const clone = networkResponse.clone();
-          caches.open(CACHE_NAME).then((cache) => cache.put(event.request, clone));
+    fetch(req)
+      .then((res) => {
+        if (res && res.status === 200 && sameOrigin && !isAudio(req.url)) {
+          const copy = res.clone();
+          caches.open(CACHE_NAME).then((cache) => cache.put(req, copy));
         }
-        return networkResponse;
+        return res;
       })
-      .catch(() => caches.match(event.request, { ignoreSearch: true }))
+      .catch(() => caches.match(req, { ignoreSearch: true }))
   );
 });

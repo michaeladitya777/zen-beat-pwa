@@ -2,8 +2,17 @@
 
 Game musik ritme berbasis Progressive Web App (PWA) yang berjalan ringan dan mendukung pemutaran lagu lokal (MP3/WAV) secara offline.
 
-## Fitur Utama
-- **4 Tingkat Kesulitan:** Mode Santuy, Mode Biasa Aja, Mode Sistem Kebut Semalam (SKS), dan Mode WNI.
-- **Lagu Lokal & Bawaan:** Putar lagu favorit langsung dari memori perangkat tanpa kuota.
-- **Sistem Trial 3 Hari:** Pencatatan waktu lokal dan Device ID untuk aktivasi lisensi permanen.
- 
+## Fitur utama
+- **4 tingkat kesulitan:** Mode Santuy, Mode Biasa Aja, Kebut Semalam, dan Mode WNI.
+- **Lagu bawaan dan lagu sendiri:** putar lagu dari server atau dari memori perangkat tanpa kuota.
+- **Sistem trial 3 hari:** pencatatan waktu lokal dan ID perangkat untuk aktivasi lisensi permanen.
+
+## Menambah lagu bawaan
+Taruh file `.mp3` di `assets/audio/songs/`. GitHub Actions (`update-songs.yml`) akan memperbarui `songs.json` otomatis.
+
+## Efek suara
+Aplikasi mencari `tap.mp3`, `perfect.mp3`, `slide.mp3`, `miss.mp3`, dan `score-tick.mp3` di `assets/audio/sfx/`.
+Jika file tidak ada, aplikasi memakai suara sintesis bawaan, jadi game tetap berbunyi.
+
+## Ikon
+Ikon PWA ada di `assets/icons/` (disimpan lokal agar bisa dipasang dan dibuka offline).
