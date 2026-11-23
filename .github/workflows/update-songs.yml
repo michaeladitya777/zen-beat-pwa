@@ -22,7 +22,7 @@ jobs:
             return {
               id: f.replace(/\.mp3$/i, ""),
               title: name,
-              subtitle: "Server Audio • Auto Sync",
+              subtitle: "Lagu bawaan",
               src: "assets/audio/songs/" + f,
               icon: icons[i % icons.length],
               color: colors[i % colors.length]
