@@ -2404,17 +2404,19 @@ function injectLicenseFormInSettings() {
     `;
   } else {
     box.innerHTML = `
-      <label for="settingsLicenseInput" style="display:block; font-size:12px; font-weight:700; color:#e2e8f0; margin-bottom:6px;">
+      <label for="settingsLicenseInput" style="display:block; font-size:12px; font-weight:700; color:#e2e8f0; margin-bottom:8px;">
         🔑 Kode Aktivasi Permanen
       </label>
-      <div style="display:flex; gap:8px;">
-        <input type="text" id="settingsLicenseInput" placeholder="Masukkan kode (misal: ZB-PRO-001)" style="
-          flex: 1; background: rgba(7, 9, 19, 0.8); border: 1px solid rgba(255,255,255,0.2);
-          border-radius: 10px; padding: 8px 10px; color: #fff; font-size: 13px; text-transform: uppercase;
+      <div style="display:flex; align-items:stretch; gap:8px; width:100%; box-sizing:border-box;">
+        <input type="text" id="settingsLicenseInput" placeholder="Contoh: ZB-PRO-001" style="
+          flex: 1; min-width: 0; width: 100%; box-sizing: border-box;
+          background: rgba(7, 9, 19, 0.8); border: 1px solid rgba(255,255,255,0.2);
+          border-radius: 10px; padding: 9px 10px; color: #fff; font-size: 13px; text-transform: uppercase;
         " />
         <button id="settingsActivateBtn" type="button" style="
+          flex-shrink: 0; box-sizing: border-box;
           background: #38bdf8; color: #070913; border: none; border-radius: 10px;
-          padding: 8px 12px; font-weight: 800; font-size: 12px; cursor: pointer; white-space: nowrap;
+          padding: 9px 14px; font-weight: 800; font-size: 12px; cursor: pointer; white-space: nowrap;
         ">Aktifkan</button>
       </div>
     `;
