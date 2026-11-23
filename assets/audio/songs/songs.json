@@ -16,27 +16,43 @@
     "color": "c-purple"
   },
   {
+    "id": "Jingle-Bells[1]",
+    "title": "Jingle Bells[1]",
+    "subtitle": "Server Audio • Auto Sync",
+    "src": "assets/audio/songs/Jingle-Bells[1].mp3",
+    "icon": "🌃",
+    "color": "c-amber"
+  },
+  {
+    "id": "LEONA-ZHEN-MANGAN-RA-NJALUK-KOWE[1]",
+    "title": "LEONA ZHEN MANGAN RA NJALUK KOWE[1]",
+    "subtitle": "Server Audio • Auto Sync",
+    "src": "assets/audio/songs/LEONA-ZHEN-MANGAN-RA-NJALUK-KOWE[1].mp3",
+    "icon": "☕",
+    "color": "c-cyan"
+  },
+  {
     "id": "Lonceng-Sukacita",
     "title": "Lonceng Sukacita",
     "subtitle": "Server Audio • Auto Sync",
     "src": "assets/audio/songs/Lonceng-Sukacita.mp3",
-    "icon": "🌃",
-    "color": "c-amber"
+    "icon": "🎧",
+    "color": "c-purple"
   },
   {
     "id": "Tinsel-Rush-1",
     "title": "Tinsel Rush 1",
     "subtitle": "Server Audio • Auto Sync",
     "src": "assets/audio/songs/Tinsel-Rush-1.mp3",
-    "icon": "☕",
-    "color": "c-cyan"
+    "icon": "🔥",
+    "color": "c-amber"
   },
   {
     "id": "Tinsel-Rush-2",
     "title": "Tinsel Rush 2",
     "subtitle": "Server Audio • Auto Sync",
     "src": "assets/audio/songs/Tinsel-Rush-2.mp3",
-    "icon": "🎧",
-    "color": "c-purple"
+    "icon": "🎵",
+    "color": "c-cyan"
   }
 ]
