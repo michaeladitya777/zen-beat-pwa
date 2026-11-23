@@ -1,5 +1,6 @@
 // Konfigurasi Utama Aplikasi & Lokasi File Audio Server
 const APP_CONFIG = {
+  licenseApiUrl: 'https://zenbeat-license-api.pulangkantor.workers.dev',
   trialDurationMs: 3 * 24 * 60 * 60 * 1000, // 3 Hari (72 Jam)
   minSongDurationSec: 30,                   // Minimal 30 detik
   maxSongDurationSec: 10 * 60,              // Maksimal 10 menit (600 detik)
@@ -58,8 +59,8 @@ const APP_CONFIG = {
       cooldown: 245,
       doubleChance: 0.14,
       holdChance: 0.22,
-      slideChance: 0.10,       // Lebih jarang agar tidak terlalu sering
-      slideCooldownMs: 1850,   // Jeda minimal 1,85 detik antar slider
+      slideChance: 0.10,
+      slideCooldownMs: 1850,
       beatThreshold: 144,
       missDamage: 10
     },
@@ -72,8 +73,8 @@ const APP_CONFIG = {
       cooldown: 165,
       doubleChance: 0.28,
       holdChance: 0.22,
-      slideChance: 0.13,       // Lebih jarang agar tetap nyaman dimainkan
-      slideCooldownMs: 1500,   // Jeda minimal 1,5 detik antar slider
+      slideChance: 0.13,
+      slideCooldownMs: 1500,
       beatThreshold: 130,
       missDamage: 12
     }
@@ -244,9 +245,17 @@ async function initTrialAndDevice() {
 
 function updateTrialUI() {
   const badge = document.getElementById('trialBadge');
+  const licenseBox = document.getElementById('licenseSection');
+
   if (appState.isActivated) {
     badge.textContent = '★ Permanen';
     badge.classList.add('activated');
+    if (licenseBox) {
+      licenseBox.innerHTML = `
+        <strong>★ Status Lisensi: Aktif Permanen</strong>
+        <small class="device-info">Terikat dengan ID Perangkat: <code>${appState.deviceId}</code></small>
+      `;
+    }
     return true;
   }
 
@@ -934,7 +943,6 @@ class RhythmEngine {
       }
     });
 
-    // Satu gerakan geser hanya memicu 1 balok slide (tidak menghapus slider di atasnya)
     this.canvas.addEventListener('pointermove', (e) => {
       if (!this.isRunning || this.isPaused) return;
       const touchData = this.activeTouches.get(e.pointerId);
@@ -1181,7 +1189,6 @@ class RhythmEngine {
       const lane1 = Math.floor(Math.random() * 4);
       const roll = Math.random();
 
-      // Cek apakah ada balok slide aktif yang masih di atas layar agar tidak pernah bertumpuk
       const hasActiveSlide = this.notes.some((n) => n.type === 'slide' && !n.hit && n.y < this.hitLineY - 120);
       const canSpawnSlide = levelCfg.slideChance > 0
         && !hasActiveSlide
@@ -1279,7 +1286,6 @@ class RhythmEngine {
     return closestNote;
   }
 
-  // Hanya mengenai 1 balok slide paling bawah (paling dekat garis target)
   handleSlideGesture(startLane) {
     const offsetPixels = (appState.audioOffset / 1000) * APP_CONFIG.levels[appState.selectedLevel].speed;
     const targetY = this.hitLineY + offsetPixels;
@@ -1958,7 +1964,6 @@ document.addEventListener('visibilitychange', () => {
   if (document.hidden) {
     handleAppBackgrounded();
   } else {
-    // Jika berada di menu utama dan kembali membuka aplikasi, lanjutkan musik menu
     if (!document.body.classList.contains('in-game')) {
       serverAudioManager.startMenuTheme();
     }
@@ -2199,50 +2204,117 @@ function setupUIEvents() {
     settingsModal.classList.add('hidden');
   });
 
-  document.getElementById('activateBtn').addEventListener('click', () => {
+  // Aktivasi Lisensi ke Cloudflare Worker
+  document.getElementById('activateBtn').addEventListener('click', async () => {
     serverAudioManager.playSfx('buttonClick');
-    const code = document.getElementById('licenseInput').value.trim();
+    const btn = document.getElementById('activateBtn');
+    const input = document.getElementById('licenseInput');
+    const code = input.value.trim().toUpperCase();
+
     if (!code) {
       alert('Masukkan kode aktivasi dari Lynk.id terlebih dahulu.');
       return;
     }
-    alert(`Kode "${code}" siap divalidasi ke Cloudflare Worker pada Tahap 3 & 4!`);
+
+    btn.disabled = true;
+    btn.textContent = 'Memeriksa Kode...';
+
+    try {
+      const response = await fetch(APP_CONFIG.licenseApiUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          licenseCode: code,
+          deviceId: appState.deviceId
+        })
+      });
+
+      const data = await response.json();
+
+      if (data.valid) {
+        appState.isActivated = true;
+        await setPersistedValue('isActivated', 'true');
+        await setPersistedValue('licenseCode', code);
+        updateTrialUI();
+        document.getElementById('paywallModal').classList.add('hidden');
+        alert(data.message);
+      } else {
+        alert(data.message || 'Kode aktivasi tidak valid.');
+      }
+    } catch (err) {
+      alert('Gagal terhubung ke server aktivasi. Pastikan koneksi internet aktif.');
+    } finally {
+      btn.disabled = false;
+      btn.textContent = 'Aktifkan Sekarang';
+    }
   });
 }
 
-// --- 7. PWA SERVICE WORKER & INSTALL PROMPT ---
-let deferredPrompt;
-window.addEventListener('beforeinstallprompt', (e) => {
-  e.preventDefault();
-  deferredPrompt = e;
+// --- 7. PWA SERVICE WORKER & TOMBOL INSTALL SAAT PERTAMA KALI DIBUKA ---
+let deferredPrompt = null;
 
+function isRunningAsInstalledPWA() {
+  return window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone === true;
+}
+
+function initInstallPromptUI() {
   const frontBanner = document.getElementById('frontInstallBanner');
   const frontBtn = document.getElementById('frontInstallBtn');
   const settingsWrapper = document.getElementById('installWrapper');
   const settingsBtn = document.getElementById('installBtn');
 
-  frontBanner.classList.remove('hidden');
-  settingsWrapper.classList.remove('hidden');
+  if (!frontBanner || !frontBtn) return;
 
-  const triggerInstall = async () => {
+  // Sembunyikan jika sudah dijalankan dari aplikasi yang ter-install
+  if (isRunningAsInstalledPWA()) {
+    frontBanner.classList.add('hidden');
+    if (settingsWrapper) settingsWrapper.classList.add('hidden');
+    return;
+  }
+
+  // Tampilkan langsung tombol Install saat pertama kali dibuka di browser
+  frontBanner.classList.remove('hidden');
+  if (settingsWrapper) settingsWrapper.classList.remove('hidden');
+
+  const handleInstallClick = async () => {
     serverAudioManager.playSfx('buttonClick');
-    if (!deferredPrompt) return;
-    deferredPrompt.prompt();
-    const { outcome } = await deferredPrompt.userChoice;
-    if (outcome === 'accepted') {
-      frontBanner.classList.add('hidden');
-      settingsWrapper.classList.add('hidden');
+
+    // Jika browser mendukung popup install native (Chrome/Edge/Android)
+    if (deferredPrompt) {
+      deferredPrompt.prompt();
+      const { outcome } = await deferredPrompt.userChoice;
+      if (outcome === 'accepted') {
+        frontBanner.classList.add('hidden');
+        if (settingsWrapper) settingsWrapper.classList.add('hidden');
+      }
+      deferredPrompt = null;
+      return;
     }
-    deferredPrompt = null;
+
+    // Panduan otomatis jika browser belum memicu prompt (misal Safari iOS atau in-app browser)
+    const isIOS = /iphone|ipad|ipod/i.test(navigator.userAgent);
+    if (isIOS) {
+      alert('Cara Install ZenBeat di iPhone/iPad:\n1. Ketuk ikon Share (kotak dengan panah ke atas) di bagian bawah Safari.\n2. Gulir ke bawah dan pilih "Add to Home Screen" (Tambah ke Layar Utama).');
+    } else {
+      alert('Cara Install ZenBeat ke Layar Utama:\n1. Ketuk ikon titik tiga (⋮) di pojok kanan atas browser.\n2. Pilih "Install aplikasi" atau "Tambahkan ke Layar utama".');
+    }
   };
 
-  frontBtn.onclick = triggerInstall;
-  settingsBtn.onclick = triggerInstall;
+  frontBtn.onclick = handleInstallClick;
+  if (settingsBtn) settingsBtn.onclick = handleInstallClick;
+}
+
+window.addEventListener('beforeinstallprompt', (e) => {
+  e.preventDefault();
+  deferredPrompt = e;
+  initInstallPromptUI();
 });
 
 window.addEventListener('appinstalled', () => {
-  document.getElementById('frontInstallBanner').classList.add('hidden');
-  document.getElementById('installWrapper').classList.add('hidden');
+  const frontBanner = document.getElementById('frontInstallBanner');
+  const settingsWrapper = document.getElementById('installWrapper');
+  if (frontBanner) frontBanner.classList.add('hidden');
+  if (settingsWrapper) settingsWrapper.classList.add('hidden');
   deferredPrompt = null;
 });
 
@@ -2255,6 +2327,7 @@ if ('serviceWorker' in navigator) {
 }
 
 document.addEventListener('DOMContentLoaded', async () => {
+  initInstallPromptUI();
   await initTrialAndDevice();
   await loadBuiltinSongsFromJson();
   setupUIEvents();
