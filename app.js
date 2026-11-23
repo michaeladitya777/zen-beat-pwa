@@ -2402,19 +2402,19 @@ function injectLicenseFormInSettings() {
       <div style="color: #34d399; font-weight: 800; font-size: 13px;">★ Lisensi Aktif Permanen</div>
       <div style="color: #94a3b8; font-size: 11px; margin-top: 4px;">Perangkat ini sudah terdaftar permanen.</div>
     `;
-  } else {
+ } else {
     box.innerHTML = `
       <label for="settingsLicenseInput" style="display:block; font-size:12px; font-weight:700; color:#e2e8f0; margin-bottom:8px;">
         🔑 Kode Aktivasi Permanen
       </label>
-      <div style="display:flex; align-items:stretch; gap:8px; width:100%; box-sizing:border-box;">
-        <input type="text" id="settingsLicenseInput" placeholder="Contoh: ZB-PRO-001" style="
-          flex: 1; min-width: 0; width: 100%; box-sizing: border-box;
+      <div style="display:grid; grid-template-columns: 1fr auto; gap:8px; align-items:center; width:100%; box-sizing:border-box;">
+        <input type="text" id="settingsLicenseInput" placeholder="ZB-PRO-001" style="
+          width: 100% !important; min-width: 0 !important; max-width: 100% !important; box-sizing: border-box !important;
           background: rgba(7, 9, 19, 0.8); border: 1px solid rgba(255,255,255,0.2);
           border-radius: 10px; padding: 9px 10px; color: #fff; font-size: 13px; text-transform: uppercase;
         " />
         <button id="settingsActivateBtn" type="button" style="
-          flex-shrink: 0; box-sizing: border-box;
+          width: auto !important; box-sizing: border-box !important;
           background: #38bdf8; color: #070913; border: none; border-radius: 10px;
           padding: 9px 14px; font-weight: 800; font-size: 12px; cursor: pointer; white-space: nowrap;
         ">Aktifkan</button>
