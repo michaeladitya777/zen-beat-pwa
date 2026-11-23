@@ -1,6 +1,7 @@
 // Konfigurasi Utama Aplikasi & Lokasi File Audio Server
 const APP_CONFIG = {
   licenseApiUrl: 'https://zenbeat-license-api.pulangkantor.workers.dev',
+  lynkStoreUrl: 'https://lynk.id/pulangkantor6',
   trialDurationMs: 3 * 24 * 60 * 60 * 1000, // 3 Hari (72 Jam)
   minSongDurationSec: 30,                   // Minimal 30 detik
   maxSongDurationSec: 10 * 60,              // Maksimal 10 menit (600 detik)
@@ -248,6 +249,49 @@ async function initTrialAndDevice() {
   renderLocalHistory();
 }
 
+function openUpgradeModal(isExpired = false) {
+  const paywallModal = document.getElementById('paywallModal');
+  if (!paywallModal) return;
+
+  // Pastikan tombol beli mengarah langsung ke link toko Lynk.id kamu
+  const buyLink = paywallModal.querySelector('a[href*="lynk.id"]');
+  if (buyLink) {
+    buyLink.href = APP_CONFIG.lynkStoreUrl;
+  }
+
+  const titleEl = paywallModal.querySelector('h3');
+  if (titleEl) {
+    titleEl.textContent = isExpired ? 'Masa Trial 3 Hari Selesai' : 'Upgrade ke ZenBeat Pro';
+  }
+
+  // Tambahkan tombol "Lanjut Trial" jika masa trial belum habis
+  let closeTrialBtn = document.getElementById('closeEarlyUpgradeBtn');
+  if (!isExpired) {
+    if (!closeTrialBtn) {
+      closeTrialBtn = document.createElement('button');
+      closeTrialBtn.id = 'closeEarlyUpgradeBtn';
+      closeTrialBtn.type = 'button';
+      closeTrialBtn.style.cssText = `
+        width: 100%; margin-top: 10px; background: rgba(255,255,255,0.08);
+        color: #cbd5e1; border: 1px solid rgba(255,255,255,0.15);
+        border-radius: 12px; padding: 10px; font-weight: 700; font-size: 13px; cursor: pointer;
+      `;
+      closeTrialBtn.textContent = 'Lanjut Main (Mode Trial)';
+      closeTrialBtn.onclick = () => {
+        serverAudioManager.playSfx('buttonClick');
+        paywallModal.classList.add('hidden');
+      };
+      const modalBox = paywallModal.querySelector('.modal-surface-3d') || paywallModal.firstElementChild;
+      if (modalBox) modalBox.appendChild(closeTrialBtn);
+    }
+    closeTrialBtn.style.display = 'block';
+  } else if (closeTrialBtn) {
+    closeTrialBtn.style.display = 'none';
+  }
+
+  paywallModal.classList.remove('hidden');
+}
+
 function updateTrialUI() {
   const badge = document.getElementById('trialBadge');
   if (!badge) return true;
@@ -255,6 +299,8 @@ function updateTrialUI() {
   if (appState.isActivated) {
     badge.textContent = '★ Permanen';
     badge.classList.add('activated');
+    badge.style.cursor = 'default';
+    badge.onclick = null;
     return true;
   }
 
@@ -262,9 +308,13 @@ function updateTrialUI() {
   const remaining = APP_CONFIG.trialDurationMs - elapsed;
 
   if (remaining <= 0) {
-    badge.textContent = 'Trial Habis';
-    const paywallModal = document.getElementById('paywallModal');
-    if (paywallModal) paywallModal.classList.remove('hidden');
+    badge.textContent = 'Trial Habis • Beli';
+    badge.style.cursor = 'pointer';
+    badge.onclick = () => {
+      serverAudioManager.playSfx('buttonClick');
+      openUpgradeModal(true);
+    };
+    openUpgradeModal(true);
     return false;
   }
 
@@ -272,7 +322,13 @@ function updateTrialUI() {
   const daysLeft = Math.floor(hoursLeft / 24);
   const remHours = hoursLeft % 24;
 
-  badge.textContent = `Trial ${daysLeft}h ${remHours}j`;
+  badge.textContent = `Trial ${daysLeft}h ${remHours}j • Pro`;
+  badge.style.cursor = 'pointer';
+  badge.title = 'Klik untuk beli lisensi permanen';
+  badge.onclick = () => {
+    serverAudioManager.playSfx('buttonClick');
+    openUpgradeModal(false);
+  };
   return true;
 }
 
@@ -2073,11 +2129,6 @@ function setupUIEvents() {
   window.addEventListener('pointerdown', unlockAudioSystem);
   window.addEventListener('keydown', unlockAudioSystem);
 
-  const tutorialSeen = localStorage.getItem(APP_CONFIG.storageKeyPrefix + 'tutorial_seen');
-  if (tutorialSeen !== 'true') {
-    openTutorialModal();
-  }
-
   const openTutBtn = document.getElementById('openTutorialBtn');
   if (openTutBtn) {
     openTutBtn.addEventListener('click', () => {
@@ -2321,7 +2372,7 @@ function setupUIEvents() {
     });
   }
 
-  // Aktivasi Lisensi ke Cloudflare Worker
+  // Aktivasi Lisensi dari Modal Upgrade / Paywall
   const activateBtn = document.getElementById('activateBtn');
   if (activateBtn) {
     activateBtn.addEventListener('click', async () => {
@@ -2354,6 +2405,13 @@ function setupUIEvents() {
           await setPersistedValue('isActivated', 'true');
           await setPersistedValue('licenseCode', code);
           updateTrialUI();
+          const settingsBox = document.getElementById('settingsLicenseBox');
+          if (settingsBox) {
+            settingsBox.innerHTML = `
+              <div style="color: #34d399; font-weight: 800; font-size: 13px;">★ Lisensi Aktif Permanen</div>
+              <div style="color: #94a3b8; font-size: 11px; margin-top: 4px;">Perangkat ini sudah terdaftar permanen.</div>
+            `;
+          }
           const paywallModal = document.getElementById('paywallModal');
           if (paywallModal) paywallModal.classList.add('hidden');
           alert(data.message);
@@ -2395,6 +2453,8 @@ function injectLicenseFormInSettings() {
     padding: 12px;
     margin: 12px 0 8px 0;
     text-align: left;
+    box-sizing: border-box;
+    width: 100%;
   `;
 
   if (appState.isActivated) {
@@ -2402,11 +2462,18 @@ function injectLicenseFormInSettings() {
       <div style="color: #34d399; font-weight: 800; font-size: 13px;">★ Lisensi Aktif Permanen</div>
       <div style="color: #94a3b8; font-size: 11px; margin-top: 4px;">Perangkat ini sudah terdaftar permanen.</div>
     `;
- } else {
+  } else {
     box.innerHTML = `
-      <label for="settingsLicenseInput" style="display:block; font-size:12px; font-weight:700; color:#e2e8f0; margin-bottom:8px;">
-        🔑 Kode Aktivasi Permanen
-      </label>
+      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px; gap:8px;">
+        <label for="settingsLicenseInput" style="font-size:12px; font-weight:700; color:#e2e8f0; margin:0;">
+          🔑 Lisensi Permanen
+        </label>
+        <a href="${APP_CONFIG.lynkStoreUrl}" target="_blank" rel="noopener" style="
+          background: linear-gradient(135deg, #34d399, #10b981); color: #070913;
+          text-decoration: none; font-size: 11px; font-weight: 800;
+          padding: 5px 10px; border-radius: 8px; white-space: nowrap;
+        ">🛒 Beli Kode</a>
+      </div>
       <div style="display:grid; grid-template-columns: 1fr auto; gap:8px; align-items:center; width:100%; box-sizing:border-box;">
         <input type="text" id="settingsLicenseInput" placeholder="ZB-PRO-001" style="
           width: 100% !important; min-width: 0 !important; max-width: 100% !important; box-sizing: border-box !important;
@@ -2511,7 +2578,6 @@ function showFirstTimeInstallBeforeTutorial() {
       return;
     }
 
-    // Sembunyikan tutorial sementara jika terbuka agar Install tampil lebih dulu
     const tutorialModal = document.getElementById('tutorialModal');
     if (tutorialModal) tutorialModal.classList.add('hidden');
 
