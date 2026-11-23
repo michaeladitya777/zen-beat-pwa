@@ -1,9 +1,10 @@
-const CACHE_NAME = 'zenbeat-v200';
+const CACHE_NAME = 'zenbeat-v201';
 const CORE_ASSETS = [
   './',
   './index.html',
   './style.css',
   './app.js',
+  './chart-analyzer.js',
   './manifest.json',
   './assets/icons/icon.svg',
   './assets/icons/icon-192.png',

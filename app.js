@@ -97,7 +97,9 @@ const appState = {
   audioOffset: 0,
   sfxEnabled: true,
   bgmEnabled: true,
-  isDownloadingSong: false
+  isDownloadingSong: false,
+  analysis: null,
+  chartJob: null
 };
 
 function escapeHtml(value) {
@@ -107,7 +109,7 @@ function escapeHtml(value) {
 // --- 1. INDEXEDDB (LISENSI, LAGU LOKAL & CACHE UNDUHAN LAGU SERVER) ---
 function openAppDB() {
   return new Promise((resolve, reject) => {
-    const request = indexedDB.open('ZenBeatAppDB', 5);
+    const request = indexedDB.open('ZenBeatAppDB', 6);
     request.onupgradeneeded = (e) => {
       const db = e.target.result;
       if (!db.objectStoreNames.contains('meta')) {
@@ -118,6 +120,9 @@ function openAppDB() {
       }
       if (!db.objectStoreNames.contains('server_songs')) {
         db.createObjectStore('server_songs', { keyPath: 'src' });
+      }
+      if (!db.objectStoreNames.contains('charts')) {
+        db.createObjectStore('charts', { keyPath: 'key' });
       }
     };
     request.onsuccess = () => resolve(request.result);
@@ -637,6 +642,133 @@ function closeTutorialModal() {
   localStorage.setItem(APP_CONFIG.storageKeyPrefix + 'tutorial_seen', 'true');
 }
 
+// --- ANALISIS CHART (offline, hasil disimpan per lagu) ---
+async function getCachedAnalysis(key, size) {
+  try {
+    const db = await openAppDB();
+    return await new Promise((resolve) => {
+      const req = db.transaction('charts', 'readonly').objectStore('charts').get(key);
+      req.onsuccess = () => {
+        const r = req.result;
+        resolve(r && r.version === ChartAnalyzer.VERSION && r.size === size ? r : null);
+      };
+      req.onerror = () => resolve(null);
+    });
+  } catch (err) {
+    return null;
+  }
+}
+
+async function saveAnalysis(key, size, data) {
+  try {
+    const db = await openAppDB();
+    await new Promise((resolve) => {
+      const tx = db.transaction('charts', 'readwrite');
+      tx.objectStore('charts').put({ key, size, version: ChartAnalyzer.VERSION, data });
+      tx.oncomplete = () => resolve();
+      tx.onerror = () => resolve();
+    });
+  } catch (err) {
+    /* cache gagal tersimpan: analisis akan diulang lain kali */
+  }
+}
+
+function setChartStatus(text, state) {
+  const el = document.getElementById('chartStatus');
+  if (!el) return;
+  el.textContent = text;
+  el.className = `chart-status ${state || ''}`.trim();
+}
+
+function setAnalyzeProgress(p) {
+  const pct = Math.round(Math.min(1, Math.max(0, p)) * 100);
+  const fill = document.getElementById('analyzeFill');
+  const label = document.getElementById('analyzePct');
+  if (fill) fill.style.width = `${pct}%`;
+  if (label) label.textContent = `${pct}%`;
+}
+
+function cancelChartPrep() {
+  if (appState.chartJob) appState.chartJob.ctrl.cancelled = true;
+  appState.chartJob = null;
+  appState.analysis = null;
+  setChartStatus('', '');
+}
+
+function startChartPrep(blob, key) {
+  const current = appState.chartJob;
+  if (current && current.key === key && current.size === blob.size && !current.error && !current.ctrl.cancelled) return current;
+
+  cancelChartPrep();
+  const ctrl = { cancelled: false };
+  const job = { key, size: blob.size, ctrl, error: null, promise: null };
+  appState.chartJob = job;
+
+  if (typeof ChartAnalyzer === 'undefined') {
+    job.error = new Error('Modul analisis tidak termuat');
+    setChartStatus('Chart gagal dibuat', 'error');
+    job.promise = Promise.resolve(null);
+    return job;
+  }
+
+  const onProgress = (p) => {
+    setChartStatus(`Menyiapkan chart... ${Math.round(p * 100)}%`, 'busy');
+    setAnalyzeProgress(p);
+  };
+
+  job.promise = (async () => {
+    onProgress(0);
+    let rec = await getCachedAnalysis(key, blob.size);
+    if (!rec) {
+      const data = await ChartAnalyzer.analyzeBlob(blob, onProgress, ctrl);
+      rec = { key, size: blob.size, version: ChartAnalyzer.VERSION, data };
+      await saveAnalysis(key, blob.size, data);
+    }
+    if (ctrl.cancelled) return null;
+    appState.analysis = rec;
+    setChartStatus(`Chart siap • ${Math.round(rec.data.bpm)} BPM`, 'ready');
+    return rec;
+  })().catch((err) => {
+    if (!ctrl.cancelled) {
+      console.error('Analisis chart gagal:', err);
+      job.error = err;
+      setChartStatus('Chart gagal dibuat', 'error');
+    }
+    return null;
+  });
+  return job;
+}
+
+// Dipanggil saat tombol Mulai: tunggu analisis selesai (biasanya sudah selesai di latar belakang)
+async function ensureChartReady() {
+  if (appState.analysis) return true;
+  const job = appState.chartJob;
+  if (!job) return false;
+
+  const modal = document.getElementById('analyzeModal');
+  const cancelBtn = document.getElementById('analyzeCancelBtn');
+  if (modal) modal.classList.remove('hidden');
+
+  let waitCancelled = false;
+  const cancelPromise = new Promise((resolve) => {
+    if (cancelBtn) {
+      cancelBtn.onclick = () => {
+        waitCancelled = true;
+        resolve(null);
+      };
+    }
+  });
+
+  const rec = await Promise.race([job.promise, cancelPromise]);
+  if (modal) modal.classList.add('hidden');
+  if (waitCancelled) return false;
+  if (!rec) {
+    alert(`Chart untuk lagu ini gagal dibuat.\nPenyebab: ${job.error ? job.error.message : 'tidak diketahui'}`);
+    return false;
+  }
+  return true;
+}
+
 // --- 4. PEMILIHAN LAGU, REVEAL LEVEL & HIGH SCORE ---
 function revealLevelSection(songTitle) {
   const section = document.getElementById('levelActionSection');
@@ -657,6 +789,7 @@ function hideLevelSection() {
   appState.selectedSongTitle = '';
   appState.serverSongBlob = null;
   appState.localAudioBlob = null;
+  cancelChartPrep();
 }
 
 async function downloadServerSongWithProgress(src, onProgress) {
@@ -745,6 +878,7 @@ async function selectAndPrepareServerSong(song, cardEl, autoPlayPreview = true) 
       pillEl.classList.add('ready');
     }
     if (progressWrap) progressWrap.classList.add('hidden');
+    startChartPrep(cachedBlob, `srv:${song.src}`);
     if (autoPlayPreview) {
       previewManager.playPreviewFromSrcOrBlob(cachedBlob);
     }
@@ -773,6 +907,7 @@ async function selectAndPrepareServerSong(song, cardEl, autoPlayPreview = true) 
       if (progressWrap) progressWrap.classList.add('hidden');
     }, 400);
 
+    startChartPrep(downloadedBlob, `srv:${song.src}`);
     if (autoPlayPreview) {
       previewManager.playPreviewFromSrcOrBlob(downloadedBlob);
     }
@@ -954,6 +1089,7 @@ function renderLocalHistory() {
       if (uploadedEl) uploadedEl.textContent = `✅ ${item.title}`;
       renderLocalHistory();
       revealLevelSection(item.title);
+      startChartPrep(savedBlob, `loc:${item.title}`);
       previewManager.playPreviewFromSrcOrBlob(savedBlob);
     });
 
@@ -996,9 +1132,18 @@ class RhythmEngine {
     this.lastFrameTime = 0;
     this.lastBassEnergy = 0;
     this.songDuration = 60;
-    this.leadSec = 0;
-    this.tailLeft = null;
-    this.delayNode = null;
+    this.chart = [];
+    this.chartIdx = 0;
+    this.songTime = 0;
+    this.timeEst = 0;
+    this.lastAT = -1;
+    this.travelSec = 1;
+    this.latencySec = 0;
+    this.audioStarted = false;
+    this.audioEnded = false;
+    this.clockLocked = false;
+    this.startWait = 0;
+    this.endWait = 0;
 
     this.life = 100;
     this.score = 0;
@@ -1184,7 +1329,30 @@ class RhythmEngine {
     this.lastSlideSpawnTime = 0;
     this.lastBassEnergy = 0;
     this.beatPulse = 0;
-    this.tailLeft = null;
+    this.audioStarted = false;
+    this.audioEnded = false;
+    this.clockLocked = false;
+    this.lastAT = -1;
+    this.startWait = 0;
+    this.endWait = 0;
+
+    // Chart disusun dari hasil analisis lagu (deterministik per lagu dan level)
+    const levelCfg = APP_CONFIG.levels[appState.selectedLevel];
+    if (!appState.analysis || typeof ChartAnalyzer === 'undefined') {
+      alert('Chart belum siap. Pilih ulang lagunya ya.');
+      exitFullScreenToMenu();
+      return;
+    }
+    this.chart = ChartAnalyzer.buildChart(
+      appState.analysis.data, levelCfg, appState.analysis.key + '|' + appState.selectedLevel, appState.selectedLevel
+    );
+    this.chartIdx = 0;
+    if (this.chart.length < 8) {
+      alert('Lagu ini terlalu datar untuk dibuatkan chart. Coba lagu lain.');
+      exitFullScreenToMenu();
+      return;
+    }
+    this.travelSec = (this.hitLineY + 35) / levelCfg.speed;
 
     this.updateScoreHUD();
     this.updateLifeUI();
@@ -1207,6 +1375,12 @@ class RhythmEngine {
       exitFullScreenToMenu();
       return;
     }
+
+    // Jeda awal selama waktu turun balok, supaya balok pertama muncul dari atas layar.
+    // songTime = posisi lagu yang sedang TERDENGAR (waktu audio dikurangi latensi keluaran).
+    this.latencySec = Math.min(0.4, (this.audioCtx.baseLatency || 0) + (this.audioCtx.outputLatency || 0));
+    this.timeEst = -(this.travelSec + 0.35);
+    this.songTime = this.timeEst - this.latencySec;
 
     this.isRunning = true;
     this.isPaused = false;
@@ -1243,27 +1417,13 @@ class RhythmEngine {
       this.analyser.smoothingTimeConstant = 0.55;
       this.dataArray = new Uint8Array(this.analyser.frequencyBinCount);
 
-      // Sinkronisasi: balok butuh waktu turun ke garis target, jadi suara yang didengar
-      // ditunda sepanjang waktu itu. Analisis beat membaca sinyal asli (tanpa tunda),
-      // sehingga balok tiba di garis tepat saat dentuman terdengar.
-      this.leadSec = Math.min(4.5, Math.max(0.3, (this.hitLineY + 35) / APP_CONFIG.levels[appState.selectedLevel].speed));
-      this.delayNode = this.audioCtx.createDelay(5);
-      this.delayNode.delayTime.value = this.leadSec;
-
-      const silent = this.audioCtx.createGain();
-      silent.gain.value = 0;
       trackNode.connect(this.analyser);
-      this.analyser.connect(silent);
-      silent.connect(this.audioCtx.destination);
-
-      trackNode.connect(this.delayNode);
-      this.delayNode.connect(this.audioCtx.destination);
+      this.analyser.connect(this.audioCtx.destination);
 
       this.audioEl.addEventListener('ended', () => {
-        if (this.tailLeft === null) this.tailLeft = this.leadSec + 0.6;
+        this.audioEnded = true;
       });
-      await this.audioEl.play();
-      this.songDuration = this.audioEl.duration || 120;
+      this.songDuration = this.audioEl.duration || (appState.analysis ? appState.analysis.data.duration : 120);
       return true;
     } catch (err) {
       console.error('Detail error audio:', err.message, source);
@@ -1281,9 +1441,6 @@ class RhythmEngine {
     if (this.audioEl && !this.audioEl.paused) {
       this.audioEl.pause();
     }
-    if (this.audioCtx && this.audioCtx.state === 'running') {
-      this.audioCtx.suspend().catch(() => {});
-    }
     const pauseModal = document.getElementById('pauseModal');
     if (pauseModal) pauseModal.classList.remove('hidden');
   }
@@ -1298,18 +1455,20 @@ class RhythmEngine {
     if (this.audioCtx && this.audioCtx.state === 'suspended') {
       await this.audioCtx.resume();
     }
-    if (this.audioEl) {
+    if (this.audioEl && this.audioStarted && !this.audioEnded) {
       await this.audioEl.play();
+      this.clockLocked = false; // sinkron ulang dengan posisi audio setelah jeda
+      this.lastAT = -1;
+      this.startWait = 0;
     }
 
     this.lastFrameTime = performance.now();
     this.loop(this.lastFrameTime);
   }
 
-  processRealTimeBeat(now) {
+  // Visualizer & denyut garis target (tidak lagi menentukan balok)
+  updateVisualizer() {
     if (!this.analyser || !this.dataArray) return;
-    const levelCfg = APP_CONFIG.levels[appState.selectedLevel];
-
     this.analyser.getByteFrequencyData(this.dataArray);
 
     let bassSum = 0;
@@ -1326,64 +1485,72 @@ class RhythmEngine {
     if (bassAvg > 125 && energyDelta > 9) {
       this.beatPulse = Math.min(1.0, (bassAvg / 245) + (energyDelta / 60));
     }
-
-    if (this.tailLeft === null && now - this.lastSpawnTime >= levelCfg.cooldown && bassAvg > levelCfg.beatThreshold && energyDelta > 7) {
-      const lane1 = Math.floor(Math.random() * 4);
-      const roll = Math.random();
-
-      const hasActiveSlide = this.notes.some((n) => n.type === 'slide' && !n.hit && n.y < this.hitLineY - 120);
-      const canSpawnSlide = levelCfg.slideChance > 0
-        && !hasActiveSlide
-        && (now - this.lastSlideSpawnTime >= levelCfg.slideCooldownMs);
-
-      if (roll < levelCfg.holdChance) {
-        const holdLength = 135 + Math.random() * 100;
-        this.notes.push({
-          type: 'hold',
-          lane: lane1,
-          y: -35,
-          length: holdLength,
-          holding: false,
-          hit: false,
-          tickAccum: 0
-        });
-        this.lastSpawnTime = now + (holdLength / levelCfg.speed) * 650;
-      } else if (canSpawnSlide && roll < levelCfg.holdChance + levelCfg.slideChance) {
-        const startLane = Math.floor(Math.random() * 3);
-        this.notes.push({
-          type: 'slide',
-          lane: startLane,
-          span: 2,
-          y: -35,
-          hit: false
-        });
-        this.lastSpawnTime = now + 180;
-        this.lastSlideSpawnTime = now;
-      } else {
-        this.notes.push({
-          type: 'tap',
-          lane: lane1,
-          y: -35,
-          hit: false
-        });
-
-        if (Math.random() < levelCfg.doubleChance) {
-          const lane2 = (lane1 + 1 + Math.floor(Math.random() * 3)) % 4;
-          this.notes.push({
-            type: 'tap',
-            lane: lane2,
-            y: -35,
-            hit: false
-          });
-        }
-        this.lastSpawnTime = now;
-      }
-    }
-
     this.lastBassEnergy = bassAvg * 0.90;
   }
 
+  // Jam lagu: audio.currentTime terlalu kasar untuk animasi, jadi diperhalus dengan jam frame
+  updateSongClock(dt) {
+    if (!this.audioStarted) {
+      this.timeEst += dt;
+      if (this.timeEst >= 0) {
+        this.timeEst = 0;
+        this.audioStarted = true;
+        this.audioEl.play().catch((err) => console.warn('Audio gagal mulai:', err.message));
+      }
+    } else if (this.audioEl && !this.audioEnded) {
+      const at = this.audioEl.currentTime;
+      if (!this.clockLocked) {
+        if (at > 0) {
+          this.clockLocked = true;
+          this.timeEst = at;
+          this.lastAT = at;
+        }
+      } else {
+        this.timeEst += dt;
+        if (at !== this.lastAT) {
+          this.lastAT = at;
+          const err = at - this.timeEst;
+          this.timeEst += Math.abs(err) > 0.2 ? err : err * 0.3;
+        }
+      }
+    } else if (this.clockLocked) {
+      this.timeEst += dt; // audio sudah selesai, jam jalan sendiri
+    }
+    this.songTime = this.timeEst - this.latencySec;
+  }
+
+  nowSongTime() {
+    if (!this.isRunning || this.isPaused) return this.songTime;
+    return this.songTime + Math.min(0.05, (performance.now() - this.lastFrameTime) / 1000);
+  }
+
+  refreshNoteY(st) {
+    const time = st === undefined ? this.nowSongTime() : st;
+    const speed = APP_CONFIG.levels[appState.selectedLevel].speed;
+    for (const n of this.notes) {
+      n.y = this.hitLineY - (n.t - time) * speed;
+    }
+  }
+
+  spawnUpcoming(st) {
+    const speed = APP_CONFIG.levels[appState.selectedLevel].speed;
+    const horizon = st + this.travelSec;
+    while (this.chartIdx < this.chart.length && this.chart[this.chartIdx].t <= horizon) {
+      const c = this.chart[this.chartIdx++];
+      const note = { type: c.type, lane: c.lane, t: c.t, y: this.hitLineY - (c.t - st) * speed, hit: false };
+      if (c.type === 'hold') {
+        note.length = c.dur * speed;
+        note.holding = false;
+        note.tickAccum = 0;
+      } else if (c.type === 'slide') {
+        note.span = c.span;
+      }
+      this.notes.push(note);
+    }
+  }
+
   handleLaneDown(lane) {
+    this.refreshNoteY();
     this.laneFlashes[lane] = 1.0;
     this.padPressScale[lane] = 0.88;
 
@@ -1429,6 +1596,7 @@ class RhythmEngine {
   }
 
   handleSlideGesture(startLane) {
+    this.refreshNoteY();
     const offsetPixels = (appState.audioOffset / 1000) * APP_CONFIG.levels[appState.selectedLevel].speed;
     const targetY = this.hitLineY + offsetPixels;
 
@@ -1476,6 +1644,7 @@ class RhythmEngine {
   }
 
   handleLaneRelease(lane) {
+    this.refreshNoteY();
     for (const note of this.notes) {
       if (note.type === 'hold' && note.lane === lane && note.holding && !note.hit) {
         const tailY = note.y - note.length;
@@ -1614,37 +1783,43 @@ class RhythmEngine {
   loop(timestamp) {
     if (!this.isRunning || this.isPaused) return;
 
-    const dt = Math.min(0.05, (timestamp - this.lastFrameTime) / 1000);
-    this.lastFrameTime = timestamp;
+    const nowPerf = performance.now();
+    const dt = Math.min(0.05, (nowPerf - this.lastFrameTime) / 1000);
+    this.lastFrameTime = nowPerf;
 
-    let elapsedSec = 0;
-    if (this.audioEl && !isNaN(this.audioEl.duration)) {
-      elapsedSec = this.audioEl.currentTime;
-      this.songDuration = this.audioEl.duration;
-    }
+    this.updateSongClock(dt);
+    const st = this.songTime;
+    if (this.audioEl && !isNaN(this.audioEl.duration)) this.songDuration = this.audioEl.duration;
 
-    const progressPct = Math.min(100, (elapsedSec / this.songDuration) * 100);
+    const progressPct = Math.min(100, (Math.max(0, st) / this.songDuration) * 100);
     const progBar = document.getElementById('songProgressBar');
     if (progBar) progBar.style.width = `${progressPct}%`;
 
-    if (this.tailLeft === null && elapsedSec >= this.songDuration - 0.05) {
-      this.tailLeft = this.leadSec + 0.6;
+    if (this.audioStarted && !this.clockLocked && !this.audioEnded) {
+      this.startWait += dt;
+      if (this.startWait > 5) {
+        alert('Audio tidak bisa diputar. Coba ketuk layar lalu mulai lagi.');
+        exitFullScreenToMenu();
+        return;
+      }
     }
-    if (this.tailLeft !== null) {
-      this.tailLeft -= dt;
-      if (this.tailLeft <= 0) {
+
+    this.updateVisualizer();
+    this.spawnUpcoming(st);
+    this.refreshNoteY(st);
+
+    // Selesai: lagu habis, semua balok sudah selesai dinilai
+    if (this.chartIdx >= this.chart.length && this.notes.length === 0 && (this.audioEnded || st >= this.songDuration)) {
+      this.endWait += dt;
+      if (this.endWait > 0.8) {
         this.finishGame(false);
         return;
       }
     }
 
-    this.processRealTimeBeat(timestamp);
-
     const levelCfg = APP_CONFIG.levels[appState.selectedLevel];
     for (const note of this.notes) {
       if (note.hit) continue;
-
-      note.y += levelCfg.speed * dt;
 
       if (note.type === 'hold' && note.holding) {
         this.laneFlashes[note.lane] = 0.85;
@@ -2267,6 +2442,7 @@ function setupUIEvents() {
       await saveSongBlobToDB(cleanTitle, file);
       saveLocalSongRecord(cleanTitle, appState.selectedLevel, 0);
       revealLevelSection(cleanTitle);
+      startChartPrep(file, `loc:${cleanTitle}`);
       previewManager.playPreviewFromSrcOrBlob(file);
     });
   }
@@ -2318,6 +2494,8 @@ function setupUIEvents() {
         }
         if (!appState.serverSongBlob) return;
       }
+
+      if (!(await ensureChartReady())) return;
 
       enterFullScreenGame();
       await rhythmEngine.start();

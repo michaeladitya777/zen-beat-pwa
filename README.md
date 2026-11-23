@@ -7,6 +7,10 @@ Game musik ritme berbasis Progressive Web App (PWA) yang berjalan ringan dan men
 - **Lagu bawaan dan lagu sendiri:** putar lagu dari server atau dari memori perangkat tanpa kuota.
 - **Sistem trial 3 hari:** pencatatan waktu lokal dan ID perangkat untuk aktivasi lisensi permanen.
 
+## Chart otomatis
+Saat sebuah lagu dipilih, ZenBeat menganalisisnya di perangkat (tanpa internet): mendeteksi ketukan dan tempo, lalu menyusun balok tap, hold, dan slide untuk tiap level.
+Hasil analisis disimpan di IndexedDB sehingga lagu yang sama langsung siap pada kali berikutnya. Kode analisis ada di `chart-analyzer.js`.
+
 ## Menambah lagu bawaan
 Taruh file `.mp3` di `assets/audio/songs/`. GitHub Actions (`update-songs.yml`) akan memperbarui `songs.json` otomatis.
 

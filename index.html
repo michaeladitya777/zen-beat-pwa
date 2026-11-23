@@ -98,6 +98,7 @@
           </div>
           <button id="unselectSongBtn" class="btn-close" type="button" title="Tutup" aria-label="Tutup">✕</button>
         </div>
+        <div id="chartStatus" class="chart-status" role="status" aria-live="polite"></div>
 
         <div class="level-list">
           <button class="level-row easy selected" data-level="easy" type="button">
@@ -181,6 +182,17 @@
       <p>Pasang ke layar utama supaya main layar penuh tanpa gangguan browser, dan tetap jalan saat offline.</p>
       <button id="modalInstallNowBtn" class="btn btn-play full" type="button">Pasang sekarang</button>
       <button id="modalSkipInstallBtn" class="btn btn-ghost full" type="button">Lanjut di browser</button>
+    </div>
+  </div>
+
+  <div id="analyzeModal" class="modal hidden">
+    <div class="dialog">
+      <div class="modal-emoji">🎧</div>
+      <h3>Menyiapkan chart</h3>
+      <p>Mendengarkan lagu untuk menyusun ketukan. Ini cukup sekali per lagu, berikutnya langsung main.</p>
+      <div class="analyze-track"><div id="analyzeFill" class="analyze-fill"></div></div>
+      <strong id="analyzePct" class="analyze-pct">0%</strong>
+      <button id="analyzeCancelBtn" class="btn btn-ghost full" type="button">Batal</button>
     </div>
   </div>
 
@@ -287,6 +299,7 @@
     </div>
   </div>
 
+  <script src="chart-analyzer.js"></script>
   <script src="app.js"></script>
 </body>
 </html>

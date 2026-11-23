@@ -283,5 +283,15 @@ input:checked + .slider-round::before { transform: translateX(22px); }
 .fill-sky { background: var(--sky); } .fill-mint { background: var(--mint); } .fill-sun { background: var(--sun); } .fill-coral { background: var(--coral); }
 .text-sky { color: var(--sky); } .text-mint { color: var(--mint); } .text-sun { color: var(--sun); } .text-coral { color: var(--coral); }
 
+/* Status & dialog analisis chart */
+.chart-status { align-self: flex-start; font-size: 0.76rem; font-weight: 800; padding: 5px 12px; border-radius: 999px; background: rgba(255, 244, 232, 0.08); color: var(--muted); }
+.chart-status:empty { display: none; }
+.chart-status.busy { color: var(--sun); background: color-mix(in srgb, var(--sun) 16%, transparent); }
+.chart-status.ready { color: var(--mint); background: color-mix(in srgb, var(--mint) 16%, transparent); }
+.chart-status.error { color: var(--coral); background: color-mix(in srgb, var(--coral) 16%, transparent); }
+.analyze-track { height: 10px; border-radius: 999px; background: rgba(255, 244, 232, 0.12); overflow: hidden; }
+.analyze-fill { height: 100%; width: 0; border-radius: inherit; background: linear-gradient(90deg, var(--sun), var(--coral)); transition: width 0.15s linear; }
+.analyze-pct { font-family: 'Baloo 2', sans-serif; font-size: 1.5rem; }
+
 @media (max-height: 640px) { .level-text p { display: none; } body:has(.level-sheet:not(.hidden)) .song-section { padding-bottom: 360px; } }
 @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; } }
