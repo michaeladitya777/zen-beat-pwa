@@ -2370,11 +2370,200 @@ function setupUIEvents() {
   }
 }
 
-// --- 7. PWA SERVICE WORKER & TOMBOL INSTALL OTOMATIS ---
+// --- 7. PWA SERVICE WORKER, INSTALL SEBELUM TUTORIAL & AKTIVASI DI PENGATURAN ---
 let deferredPrompt = null;
 
 function isRunningAsInstalledPWA() {
   return window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone === true;
+}
+
+function injectLicenseFormInSettings() {
+  const settingsModal = document.getElementById('settingsModal');
+  if (!settingsModal) return;
+  if (document.getElementById('settingsLicenseBox')) return;
+
+  const modalBox = settingsModal.querySelector('.modal-surface-3d') || settingsModal.firstElementChild;
+  const deviceInfoEl = modalBox ? modalBox.querySelector('.device-info') : null;
+  if (!modalBox) return;
+
+  const box = document.createElement('div');
+  box.id = 'settingsLicenseBox';
+  box.style.cssText = `
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid rgba(56, 189, 248, 0.35);
+    border-radius: 14px;
+    padding: 12px;
+    margin: 12px 0 8px 0;
+    text-align: left;
+  `;
+
+  if (appState.isActivated) {
+    box.innerHTML = `
+      <div style="color: #34d399; font-weight: 800; font-size: 13px;">★ Lisensi Aktif Permanen</div>
+      <div style="color: #94a3b8; font-size: 11px; margin-top: 4px;">Perangkat ini sudah terdaftar permanen.</div>
+    `;
+  } else {
+    box.innerHTML = `
+      <label for="settingsLicenseInput" style="display:block; font-size:12px; font-weight:700; color:#e2e8f0; margin-bottom:6px;">
+        🔑 Kode Aktivasi Permanen
+      </label>
+      <div style="display:flex; gap:8px;">
+        <input type="text" id="settingsLicenseInput" placeholder="Masukkan kode (misal: ZB-PRO-001)" style="
+          flex: 1; background: rgba(7, 9, 19, 0.8); border: 1px solid rgba(255,255,255,0.2);
+          border-radius: 10px; padding: 8px 10px; color: #fff; font-size: 13px; text-transform: uppercase;
+        " />
+        <button id="settingsActivateBtn" type="button" style="
+          background: #38bdf8; color: #070913; border: none; border-radius: 10px;
+          padding: 8px 12px; font-weight: 800; font-size: 12px; cursor: pointer; white-space: nowrap;
+        ">Aktifkan</button>
+      </div>
+    `;
+  }
+
+  // Taruh persis di atas elemen ID Perangkat (.device-info)
+  if (deviceInfoEl) {
+    modalBox.insertBefore(box, deviceInfoEl);
+  } else {
+    modalBox.appendChild(box);
+  }
+
+  const sBtn = document.getElementById('settingsActivateBtn');
+  const sInput = document.getElementById('settingsLicenseInput');
+  if (sBtn && sInput) {
+    sBtn.addEventListener('click', async () => {
+      serverAudioManager.playSfx('buttonClick');
+      const code = sInput.value.trim().toUpperCase();
+      if (!code) {
+        alert('Masukkan kode aktivasi terlebih dahulu.');
+        return;
+      }
+
+      sBtn.disabled = true;
+      sBtn.textContent = 'Cek...';
+
+      try {
+        const res = await fetch(APP_CONFIG.licenseApiUrl, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            licenseCode: code,
+            deviceId: appState.deviceId
+          })
+        });
+        const data = await res.json();
+
+        if (data.valid) {
+          appState.isActivated = true;
+          await setPersistedValue('isActivated', 'true');
+          await setPersistedValue('licenseCode', code);
+          updateTrialUI();
+          box.innerHTML = `
+            <div style="color: #34d399; font-weight: 800; font-size: 13px;">★ Lisensi Aktif Permanen</div>
+            <div style="color: #94a3b8; font-size: 11px; margin-top: 4px;">Perangkat ini sudah terdaftar permanen.</div>
+          `;
+          alert(data.message);
+        } else {
+          alert(data.message || 'Kode aktivasi tidak valid.');
+        }
+      } catch (err) {
+        alert('Gagal terhubung ke server Cloudflare. Periksa koneksi internet.');
+      } finally {
+        if (document.body.contains(sBtn)) {
+          sBtn.disabled = false;
+          sBtn.textContent = 'Aktifkan';
+        }
+      }
+    });
+  }
+}
+
+async function triggerInstallPromptAction() {
+  serverAudioManager.playSfx('buttonClick');
+  if (deferredPrompt) {
+    deferredPrompt.prompt();
+    const { outcome } = await deferredPrompt.userChoice;
+    deferredPrompt = null;
+    if (outcome === 'accepted') {
+      const banner = document.getElementById('zenbeatInstallBanner');
+      const installWrapper = document.getElementById('installWrapper');
+      if (banner) banner.remove();
+      if (installWrapper) installWrapper.classList.add('hidden');
+      return true;
+    }
+    return false;
+  }
+
+  const isIOS = /iphone|ipad|ipod/i.test(navigator.userAgent);
+  if (isIOS) {
+    alert('Cara Pasang ZenBeat di iPhone/iPad:\n1. Ketuk ikon Share (kotak panah ke atas) di bawah Safari.\n2. Pilih "Add to Home Screen" (Tambah ke Layar Utama).');
+  } else {
+    alert('Cara Pasang ZenBeat ke Layar Utama:\n1. Ketuk ikon titik tiga (⋮) di pojok kanan atas browser.\n2. Pilih "Install aplikasi" atau "Tambahkan ke Layar utama".');
+  }
+  return false;
+}
+
+function showFirstTimeInstallBeforeTutorial() {
+  return new Promise((resolve) => {
+    if (isRunningAsInstalledPWA()) {
+      resolve();
+      return;
+    }
+
+    // Sembunyikan tutorial sementara jika terbuka agar Install tampil lebih dulu
+    const tutorialModal = document.getElementById('tutorialModal');
+    if (tutorialModal) tutorialModal.classList.add('hidden');
+
+    let installModal = document.getElementById('firstTimeInstallModal');
+    if (!installModal) {
+      installModal = document.createElement('div');
+      installModal.id = 'firstTimeInstallModal';
+      installModal.style.cssText = `
+        position: fixed; inset: 0; z-index: 9999;
+        background: rgba(7, 9, 19, 0.92); backdrop-filter: blur(8px);
+        display: flex; align-items: center; justify-content: center; padding: 20px;
+      `;
+      installModal.innerHTML = `
+        <div style="
+          width: 100%; max-width: 360px; background: #11162a;
+          border: 1px solid rgba(56, 189, 248, 0.45); border-radius: 22px;
+          padding: 24px 20px; text-align: center; color: #fff;
+          box-shadow: 0 18px 40px rgba(0,0,0,0.6);
+        ">
+          <div style="font-size: 46px; margin-bottom: 10px;">📲</div>
+          <h3 style="margin: 0 0 8px 0; font-size: 20px; font-weight: 800;">Pasang Aplikasi ZenBeat</h3>
+          <p style="margin: 0 0 18px 0; font-size: 13px; color: #cbd5e1; line-height: 1.5;">
+            Install ZenBeat ke layar utama agar layar penuh tanpa gangguan browser dan bisa dimainkan offline!
+          </p>
+          <button id="modalInstallNowBtn" type="button" style="
+            width: 100%; background: linear-gradient(135deg, #38bdf8, #818cf8);
+            color: #070913; border: none; border-radius: 14px; padding: 13px;
+            font-weight: 900; font-size: 14px; cursor: pointer; margin-bottom: 10px;
+          ">Install Aplikasi Sekarang</button>
+          <button id="modalSkipInstallBtn" type="button" style="
+            width: 100%; background: rgba(255,255,255,0.07);
+            color: #94a3b8; border: 1px solid rgba(255,255,255,0.12);
+            border-radius: 12px; padding: 10px; font-weight: 700; font-size: 12px; cursor: pointer;
+          ">Lanjut di Browser</button>
+        </div>
+      `;
+      document.body.appendChild(installModal);
+    }
+
+    const closeAndContinueToTutorial = () => {
+      installModal.remove();
+      resolve();
+    };
+
+    document.getElementById('modalInstallNowBtn').onclick = async () => {
+      await triggerInstallPromptAction();
+      closeAndContinueToTutorial();
+    };
+
+    document.getElementById('modalSkipInstallBtn').onclick = () => {
+      serverAudioManager.playSfx('buttonClick');
+      closeAndContinueToTutorial();
+    };
+  });
 }
 
 function ensureInstallUI() {
@@ -2382,7 +2571,6 @@ function ensureInstallUI() {
   const installBtn = document.getElementById('installBtn');
   const settingsBtn = document.getElementById('openSettingsBtn');
 
-  // Pastikan tombol Pengaturan selalu terlihat
   if (settingsBtn) {
     settingsBtn.classList.remove('hidden');
     settingsBtn.style.display = '';
@@ -2395,19 +2583,26 @@ function ensureInstallUI() {
     return;
   }
 
-  if (installWrapper) installWrapper.classList.remove('hidden');
+  if (installWrapper) {
+    installWrapper.classList.remove('hidden');
+    installWrapper.style.display = 'block';
+  }
+  if (installBtn) {
+    installBtn.classList.remove('hidden');
+    installBtn.style.display = 'block';
+    installBtn.onclick = triggerInstallPromptAction;
+  }
 
-  // Buat banner install di halaman depan jika belum ada
   let banner = document.getElementById('zenbeatInstallBanner');
   if (!banner) {
     banner = document.createElement('div');
     banner.id = 'zenbeatInstallBanner';
     banner.style.cssText = `
       display: flex; align-items: center; justify-content: space-between; gap: 10px;
-      background: linear-gradient(135deg, rgba(56, 189, 248, 0.2), rgba(168, 85, 247, 0.2));
-      border: 1px solid rgba(56, 189, 248, 0.5); border-radius: 14px;
-      padding: 10px 14px; margin: 0 0 14px 0; color: #ffffff; font-size: 13px;
-      box-shadow: 0 4px 15px rgba(0,0,0,0.25);
+      background: linear-gradient(135deg, rgba(56, 189, 248, 0.22), rgba(168, 85, 247, 0.22));
+      border: 1px solid rgba(56, 189, 248, 0.55); border-radius: 14px;
+      padding: 10px 14px; margin: 10px 16px; color: #ffffff; font-size: 13px;
+      box-shadow: 0 4px 15px rgba(0,0,0,0.25); position: relative; z-index: 20;
     `;
     banner.innerHTML = `
       <span>📲 <strong>Pasang Aplikasi ZenBeat</strong> (Layar Penuh & Offline)</span>
@@ -2417,36 +2612,17 @@ function ensureInstallUI() {
       ">Install</button>
     `;
 
-    const menuContainer = document.querySelector('#menuScreen .menu-container') || document.getElementById('menuScreen');
-    if (menuContainer) {
-      menuContainer.insertBefore(banner, menuContainer.firstChild);
+    const menuScreen = document.getElementById('menuScreen');
+    const headerEl = menuScreen ? menuScreen.querySelector('header') : null;
+    if (headerEl && headerEl.parentNode) {
+      headerEl.parentNode.insertBefore(banner, headerEl.nextSibling);
+    } else if (menuScreen) {
+      menuScreen.prepend(banner);
     }
   }
 
-  const triggerInstall = async () => {
-    serverAudioManager.playSfx('buttonClick');
-    if (deferredPrompt) {
-      deferredPrompt.prompt();
-      const { outcome } = await deferredPrompt.userChoice;
-      if (outcome === 'accepted') {
-        banner.remove();
-        if (installWrapper) installWrapper.classList.add('hidden');
-      }
-      deferredPrompt = null;
-      return;
-    }
-
-    const isIOS = /iphone|ipad|ipod/i.test(navigator.userAgent);
-    if (isIOS) {
-      alert('Cara Pasang ZenBeat di iPhone/iPad:\n1. Ketuk ikon Share (kotak panah ke atas) di bawah Safari.\n2. Pilih "Add to Home Screen" (Tambah ke Layar Utama).');
-    } else {
-      alert('Cara Pasang ZenBeat ke Layar Utama:\n1. Ketuk ikon titik tiga (⋮) di pojok kanan atas browser.\n2. Pilih "Install aplikasi" atau "Tambahkan ke Layar utama".');
-    }
-  };
-
   const frontBtn = document.getElementById('zenbeatFrontInstallBtn');
-  if (frontBtn) frontBtn.onclick = triggerInstall;
-  if (installBtn) installBtn.onclick = triggerInstall;
+  if (frontBtn) frontBtn.onclick = triggerInstallPromptAction;
 }
 
 window.addEventListener('beforeinstallprompt', (e) => {
@@ -2458,8 +2634,10 @@ window.addEventListener('beforeinstallprompt', (e) => {
 window.addEventListener('appinstalled', () => {
   const banner = document.getElementById('zenbeatInstallBanner');
   const installWrapper = document.getElementById('installWrapper');
+  const firstInstallModal = document.getElementById('firstTimeInstallModal');
   if (banner) banner.remove();
   if (installWrapper) installWrapper.classList.add('hidden');
+  if (firstInstallModal) firstInstallModal.remove();
   deferredPrompt = null;
 });
 
@@ -2479,7 +2657,15 @@ document.addEventListener('DOMContentLoaded', async () => {
     await initTrialAndDevice();
     await loadBuiltinSongsFromJson();
     setupUIEvents();
+    injectLicenseFormInSettings();
     ensureInstallUI();
+
+    // Tampilkan layar Install Aplikasi dulu sebelum Tutorial muncul
+    await showFirstTimeInstallBeforeTutorial();
+    const tutorialSeen = localStorage.getItem(APP_CONFIG.storageKeyPrefix + 'tutorial_seen');
+    if (tutorialSeen !== 'true') {
+      openTutorialModal();
+    }
   } catch (err) {
     console.error('Error saat memuat ZenBeat:', err);
   }
