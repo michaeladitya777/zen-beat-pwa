@@ -16,10 +16,10 @@
     "color": "c-purple"
   },
   {
-    "id": "Jingle-Bells[1]",
-    "title": "Jingle Bells[1]",
+    "id": "Jingle-Bells",
+    "title": "Jingle Bells",
     "subtitle": "Server Audio • Auto Sync",
-    "src": "assets/audio/songs/Jingle-Bells[1].mp3",
+    "src": "assets/audio/songs/Jingle-Bells.mp3",
     "icon": "🌃",
     "color": "c-amber"
   },
