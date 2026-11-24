@@ -21,6 +21,7 @@ button, label, .song-card, .level-row, .history-item { user-select: none; -webki
 input { user-select: text; -webkit-user-select: text; }
 .hidden { display: none !important; }
 
+html, body { touch-action: pan-x pan-y; -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }
 body {
   font-family: 'Nunito', system-ui, -apple-system, 'Segoe UI', sans-serif;
   color: var(--paper);
@@ -119,7 +120,7 @@ body:has(.level-sheet:not(.hidden)) .song-section { padding-bottom: 440px; }
 .loading-songs { text-align: center; color: var(--muted); font-size: 0.9rem; padding: 28px 10px; }
 
 .song-card, .history-item {
-  position: relative; display: flex; flex-direction: column; gap: 10px; padding: 12px 14px 12px 12px; border-radius: 22px 22px 22px 8px;
+  min-width: 0; position: relative; display: flex; flex-direction: column; gap: 10px; padding: 12px 14px 12px 12px; border-radius: 22px 22px 22px 8px;
   background: rgba(255, 244, 232, 0.07); border: 1px solid transparent; cursor: pointer; transition: transform 0.15s, background 0.2s, border-color 0.2s;
 }
 .song-card:active, .history-item:active { transform: scale(0.985); }
@@ -130,8 +131,9 @@ body:has(.level-sheet:not(.hidden)) .song-section { padding-bottom: 440px; }
 .c-purple { background: linear-gradient(135deg, var(--berry), var(--coral)); }
 .c-amber { background: linear-gradient(135deg, var(--sun), var(--coral)); }
 .song-info { flex: 1; min-width: 0; }
-.song-info strong { display: block; font-size: 0.98rem; font-weight: 800; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.song-info span { font-size: 0.76rem; color: var(--muted); }
+.song-info strong, .history-title-row strong { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-clamp: 2; overflow: hidden; white-space: normal; overflow-wrap: anywhere; word-break: break-word; }
+.song-info strong { font-size: 0.98rem; font-weight: 800; line-height: 1.2; }
+.song-info span { display: block; font-size: 0.76rem; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .status-pill, .history-active-pill { font-size: 0.7rem; font-weight: 800; padding: 5px 10px; border-radius: 999px; background: rgba(255, 244, 232, 0.1); color: var(--muted); white-space: nowrap; }
 .status-pill.ready, .history-active-pill { background: color-mix(in srgb, var(--mint) 22%, transparent); color: var(--mint); }
 .dl-progress-wrap { display: flex; align-items: center; gap: 10px; }
@@ -145,12 +147,13 @@ body:has(.level-sheet:not(.hidden)) .song-section { padding-bottom: 440px; }
 
 .upload-card { display: flex; align-items: center; gap: 14px; padding: 18px 16px; border-radius: 22px; border: 2px dashed rgba(255, 244, 232, 0.25); cursor: pointer; background: rgba(255, 244, 232, 0.04); }
 .upload-icon { font-size: 1.9rem; }
-.upload-text strong { display: block; font-size: 0.95rem; }
+.upload-text { flex: 1; min-width: 0; }
+.upload-text strong { display: block; font-size: 0.95rem; overflow-wrap: anywhere; }
 .upload-text span { font-size: 0.76rem; color: var(--muted); }
 .local-history { margin-top: 16px; display: flex; flex-direction: column; gap: 10px; }
 .history-header { display: flex; justify-content: space-between; align-items: baseline; font-weight: 800; font-size: 0.9rem; }
 .history-header small { color: var(--muted); font-weight: 600; }
-.history-title-row strong { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 0.92rem; }
+.history-title-row strong { flex: 1; min-width: 0; font-size: 0.92rem; line-height: 1.2; }
 
 /* Panel tingkat tantangan: muncul dari bawah setelah memilih lagu */
 .level-sheet {
@@ -161,7 +164,8 @@ body:has(.level-sheet:not(.hidden)) .song-section { padding-bottom: 440px; }
 }
 @keyframes sheetUp { from { transform: translate(-50%, 100%); } to { transform: translate(-50%, 0); } }
 .sheet-grip { width: 42px; height: 4px; border-radius: 4px; background: var(--line); align-self: center; }
-.selected-song-caption { color: var(--muted); font-size: 0.78rem; display: block; margin-top: 3px; }
+.section-head > div { min-width: 0; }
+.selected-song-caption { color: var(--muted); font-size: 0.78rem; display: block; margin-top: 3px; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .level-list { display: flex; flex-direction: column; gap: 8px; }
 .level-row { --lc: var(--mint); display: flex; align-items: center; gap: 12px; text-align: left; width: 100%; padding: 10px 14px; border-radius: 18px; border: 2px solid transparent; background: rgba(255, 244, 232, 0.06); color: var(--paper); cursor: pointer; transition: background 0.2s, border-color 0.2s, transform 0.15s; }
 .level-row:active { transform: scale(0.985); }
@@ -196,7 +200,8 @@ body:has(.level-sheet:not(.hidden)) .song-section { padding-bottom: 440px; }
 #gameCanvas { display: block; width: 100%; height: 100%; touch-action: none; }
 .countdown-overlay { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px; background: rgba(22, 14, 43, 0.55); z-index: 5; }
 .countdown-song-info { text-align: center; padding: 0 20px; }
-.countdown-song-info strong { display: block; font-family: 'Baloo 2', sans-serif; font-size: 1.3rem; }
+.countdown-song-info { max-width: 100%; }
+.countdown-song-info strong { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-clamp: 2; overflow: hidden; overflow-wrap: anywhere; font-family: 'Baloo 2', sans-serif; font-size: 1.3rem; }
 .countdown-song-info span { font-size: 0.85rem; font-weight: 700; }
 .countdown-number { font-size: 6rem; font-weight: 800; line-height: 1; }
 @keyframes popScale { 0% { transform: scale(1.7); opacity: 0; } 40% { opacity: 1; } 100% { transform: scale(1); opacity: 1; } }
@@ -229,7 +234,7 @@ body:has(.level-sheet:not(.hidden)) .song-section { padding-bottom: 440px; }
 .device-info, .device-hint { font-size: 0.72rem; color: var(--muted); }
 .device-info strong { color: var(--paper); font-family: ui-monospace, monospace; }
 
-input[type='text'] { width: 100%; background: rgba(0, 0, 0, 0.28); border: 1px solid var(--line); color: var(--paper); border-radius: 14px; padding: 12px 14px; font: 700 0.95rem 'Nunito', sans-serif; text-transform: uppercase; text-align: center; }
+input[type='text'] { width: 100%; background: rgba(0, 0, 0, 0.28); border: 1px solid var(--line); color: var(--paper); border-radius: 14px; padding: 12px 14px; font: 700 16px 'Nunito', sans-serif; text-transform: uppercase; text-align: center; }
 input[type='text']:focus { outline: 2px solid var(--sun); outline-offset: 1px; }
 :focus-visible { outline: 2px solid var(--sun); outline-offset: 2px; }
 
@@ -251,7 +256,7 @@ input:checked + .slider-round::before { transform: translateX(22px); }
 .license-head { display: flex; justify-content: space-between; align-items: center; gap: 8px; margin-bottom: 8px; font-weight: 800; font-size: 0.85rem; }
 .link-buy { background: var(--mint); color: #12301f; text-decoration: none; font-size: 0.74rem; font-weight: 800; padding: 5px 10px; border-radius: 999px; white-space: nowrap; }
 .license-row { display: grid; grid-template-columns: 1fr auto; gap: 8px; }
-.license-row input { min-width: 0; padding: 9px 10px; font-size: 0.85rem; }
+.license-row input { min-width: 0; padding: 9px 10px; font-size: 16px; }
 .license-active strong { display: block; color: var(--mint); font-size: 0.9rem; }
 .license-active span { font-size: 0.74rem; color: var(--muted); }
 

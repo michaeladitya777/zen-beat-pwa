@@ -2,7 +2,8 @@
 <html lang="id">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data: blob:; media-src 'self' blob:; connect-src 'self' https://*.workers.dev; worker-src 'self'; manifest-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'" />
   <meta name="theme-color" content="#1a1033" />
   <title>ZenBeat — Lepas penat sambil mengetuk ritme</title>
   <link rel="manifest" href="manifest.json" />
@@ -290,10 +291,11 @@
     <div class="dialog">
       <div class="modal-emoji">🔒</div>
       <h3 id="paywallTitle">Masa trial 3 hari selesai</h3>
-      <p>Aktifkan lisensi permanen untuk main tanpa batas di perangkat ini.</p>
+      <p id="paywallInfo">Aktifkan lisensi permanen untuk main tanpa batas di perangkat ini.</p>
       <a id="paywallBuyLink" href="https://lynk.id/pulangkantor6" target="_blank" rel="noopener" class="btn btn-play full">Beli kode aktivasi di Lynk.id</a>
       <input type="text" id="licenseInput" class="license-input" placeholder="Masukkan kode aktivasi" autocomplete="off" autocapitalize="characters" spellcheck="false" />
       <button id="activateBtn" class="btn btn-ghost full" type="button">Aktifkan sekarang</button>
+      <button id="revalidateBtn" class="btn btn-play full hidden" type="button">Validasi ulang lisensi</button>
       <button id="closeEarlyUpgradeBtn" class="btn btn-ghost full hidden" type="button">Lanjut main (mode trial)</button>
       <small class="device-hint">ID perangkat: <span id="paywallDeviceId">-</span></small>
     </div>

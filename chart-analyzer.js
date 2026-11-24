@@ -304,10 +304,10 @@
   }
 
   const LEVEL_SHAPE = {
-    easy:    { keep: 0.40, beatBoost: 0.8, holdMin: 0.45, susBoost: 0.9, holdScale: 1.6, holdMax: 1.3 },
-    normal:  { keep: 0.30, beatBoost: 0.5, holdMin: 0.4, susBoost: 0.7, holdScale: 1.4, holdMax: 1.2 },
-    hard:    { keep: 0.20, beatBoost: 0.2, holdMin: 0.4, susBoost: 0.3, holdScale: 0.6, holdMax: 0.9 },
-    extreme: { keep: 0.00, beatBoost: 0.0, holdMin: 0.4, susBoost: 0.0, holdScale: 0.4, holdMax: 0.75 }
+    easy:    { keep: 0.40, beatBoost: 0.8, holdMin: 0.45, susBoost: 0.9, holdScale: 1.6, holdMax: 3.0, holdSecs: 2.2, holdBeatsMin: 2, extend: true },
+    normal:  { keep: 0.30, beatBoost: 0.5, holdMin: 0.4, susBoost: 0.7, holdScale: 1.4, holdMax: 2.6, holdSecs: 1.8, holdBeatsMin: 2, extend: true },
+    hard:    { keep: 0.20, beatBoost: 0.2, holdMin: 0.4, susBoost: 0.3, holdScale: 0.6, holdMax: 1.1, holdSecs: 0.6, holdBeatsMin: 1 },
+    extreme: { keep: 0.00, beatBoost: 0.0, holdMin: 0.4, susBoost: 0.0, holdScale: 0.4, holdMax: 0.8, holdSecs: 0.5, holdBeatsMin: 1 }
   };
 
   function buildChart(data, cfg, seedStr, levelKey) {
@@ -355,7 +355,9 @@
 
     // Susun tipe & jalur secara kronologis
     const chart = [];
+    const bl = data.bpm > 0 ? 60 / data.bpm : 0.5; // panjang satu beat (detik)
     const laneBusyUntil = [-1, -1, -1, -1];
+    const laneLastTap = [-1e9, -1e9, -1e9, -1e9];
     let lastLane = -1, sameRun = 0, lastSlideT = -1e9;
 
     const pickLane = (v, t, exclude) => {
@@ -379,14 +381,28 @@
       const nextGap = i + 1 < taken.length ? taken[i + 1].t - it.t : 5;
       const strong = it.s >= strongS;
 
-      // Nada tahan
-      if ((it.sus >= shape.holdMin || nextGap >= 1.2) && nextGap >= shape.holdMin + 0.35 && rng() < Math.min(0.9, cfg.holdChance * shape.holdScale)) {
-        const dur = Math.max(0.35, Math.min(Math.max(it.sus, 0.6), shape.holdMax, nextGap - 0.3));
+      // Nada tahan: panjangnya kelipatan beat, dan combo dihitung per beat saat ditahan
+      // Level santai: nada tahan boleh menggantikan ketukan berikutnya agar lebih panjang
+      let endIdx = i + 1;
+      if (shape.extend) {
+        while (endIdx < taken.length && taken[endIdx].t - it.t - 0.3 < shape.holdSecs) endIdx++;
+      }
+      const gapEnd = endIdx < taken.length ? taken[endIdx].t - it.t : 5;
+      const maxBeats = Math.floor(Math.min(shape.holdMax, gapEnd - 0.3) / bl + 1e-6);
+      if ((it.sus >= shape.holdMin || nextGap >= 1.2) && maxBeats >= 1 &&
+          rng() < Math.min(0.9, cfg.holdChance * shape.holdScale)) {
+        let beats = Math.round(Math.max(it.sus, shape.holdSecs) / bl);
+        beats = Math.max(1, Math.min(maxBeats, Math.max(shape.holdBeatsMin, beats)));
         const lane = pickLane(it.v, it.t, []);
         if (lane >= 0) {
-          chart.push({ t: it.t, type: 'hold', lane, dur });
+          const dur = beats * bl;
+          const ticks = [];
+          for (let k = 1; k <= beats; k++) ticks.push(it.t + k * bl);
+          chart.push({ t: it.t, type: 'hold', lane, dur, ticks });
           laneBusyUntil[lane] = it.t + dur + 0.2;
+          laneLastTap[lane] = it.t + dur;
           setLast(lane);
+          i = endIdx - 1; // ketukan yang tertimpa nada tahan dilewati
           continue;
         }
       }
@@ -396,9 +412,11 @@
         const base = pickLane(it.v, it.t, []);
         if (base >= 0) {
           const start = Math.min(base, 2);
-          if (laneBusyUntil[start] <= it.t && laneBusyUntil[start + 1] <= it.t) {
+          if (laneBusyUntil[start] <= it.t && laneBusyUntil[start + 1] <= it.t &&
+              it.t - laneLastTap[start] >= 0.35 && it.t - laneLastTap[start + 1] >= 0.35) {
             chart.push({ t: it.t, type: 'slide', lane: start, span: 2 });
             laneBusyUntil[start] = laneBusyUntil[start + 1] = it.t + 0.3;
+            laneLastTap[start] = laneLastTap[start + 1] = it.t;
             lastSlideT = it.t;
             setLast(start);
             continue;
@@ -410,6 +428,7 @@
       if (lane < 0) continue;
       chart.push({ t: it.t, type: 'tap', lane });
       laneBusyUntil[lane] = it.t + 0.08;
+      laneLastTap[lane] = it.t;
       setLast(lane);
       if (strong && rng() < cfg.doubleChance * 2.2) {
         const far = [0, 1, 2, 3].filter((l) => Math.abs(l - lane) >= 2 && laneBusyUntil[l] <= it.t);
@@ -418,6 +437,7 @@
           const l2 = pool[Math.floor(rng() * pool.length)];
           chart.push({ t: it.t, type: 'tap', lane: l2 });
           laneBusyUntil[l2] = it.t + 0.08;
+          laneLastTap[l2] = it.t;
         }
       }
     }

@@ -1,4 +1,4 @@
-const CACHE_NAME = 'zenbeat-v201';
+const CACHE_NAME = 'zenbeat-v202';
 const CORE_ASSETS = [
   './',
   './index.html',

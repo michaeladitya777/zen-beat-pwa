@@ -1,6 +1,9 @@
 // Konfigurasi Utama Aplikasi & Lokasi File Audio Server
 const APP_CONFIG = {
   licenseApiUrl: 'https://zenbeat-license-api.pulangkantor.workers.dev',
+  // Kunci publik untuk memverifikasi token lisensi (hasil: node license-server/tools/generate-keys.mjs).
+  // null = mode lama (kurang aman). Isi bersama licenseApiUrl setelah license-server dipasang.
+  licensePublicKey: null,
   lynkStoreUrl: 'https://lynk.id/pulangkantor6',
   trialDurationMs: 3 * 24 * 60 * 60 * 1000, // 3 Hari (72 Jam)
   minSongDurationSec: 30,                   // Minimal 30 detik
@@ -87,6 +90,14 @@ const appState = {
   deviceId: null,
   firstLaunch: null,
   isActivated: false,
+  licenseMode: 'legacy',
+  licenseKind: null,
+  licenseIat: 0,
+  licenseExp: 0,
+  trialEndsAt: null,
+  provisional: false,
+  needsRevalidate: false,
+  licenseNote: '',
   selectedSource: 'builtin',
   selectedSongId: '',
   selectedSongSrc: '',
@@ -212,9 +223,179 @@ async function getServerSongBlob(src) {
 }
 
 function generateDeviceId() {
-  const randomPart = Math.random().toString(36).substring(2, 8).toUpperCase();
-  const timePart = Date.now().toString(36).slice(-4).toUpperCase();
-  return `ZB-${randomPart}-${timePart}`;
+  const rnd = (n) => {
+    const bytes = new Uint8Array(n);
+    if (window.crypto && crypto.getRandomValues) crypto.getRandomValues(bytes);
+    else for (let i = 0; i < n; i++) bytes[i] = Math.floor(Math.random() * 256);
+    return [...bytes].map((x) => x.toString(16).padStart(2, '0')).join('').toUpperCase();
+  };
+  return `ZB-${rnd(5)}-${rnd(2)}`;
+}
+
+// --- LISENSI AMAN: token bertanda tangan dari license-server ---
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+function b64uToBytes(str) {
+  const pad = '='.repeat((4 - (str.length % 4)) % 4);
+  const bin = atob(str.replace(/-/g, '+').replace(/_/g, '/') + pad);
+  return Uint8Array.from(bin, (c) => c.charCodeAt(0));
+}
+
+const LicenseSecure = {
+  _key: null,
+  get enabled() {
+    return Boolean(APP_CONFIG.licensePublicKey && window.crypto && crypto.subtle);
+  },
+  async verify(token) {
+    try {
+      if (!this._key) {
+        this._key = crypto.subtle.importKey('jwk', APP_CONFIG.licensePublicKey, { name: 'ECDSA', namedCurve: 'P-256' }, false, ['verify']);
+      }
+      const [body, sig] = String(token).split('.');
+      if (!body || !sig) return null;
+      const ok = await crypto.subtle.verify({ name: 'ECDSA', hash: 'SHA-256' }, await this._key, b64uToBytes(sig), new TextEncoder().encode(body));
+      if (!ok) return null;
+      const payload = JSON.parse(new TextDecoder().decode(b64uToBytes(body)));
+      return payload && payload.v === 1 ? payload : null;
+    } catch (err) {
+      return null;
+    }
+  },
+  async call(body, timeoutMs = 8000) {
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), timeoutMs);
+    try {
+      const res = await fetch(APP_CONFIG.licenseApiUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+        signal: ctrl.signal
+      });
+      return await res.json();
+    } finally {
+      clearTimeout(timer);
+    }
+  }
+};
+
+// Jam tepercaya: tidak bisa diputar mundur (disinkronkan ke waktu server tiap kali online)
+function trustedNow() {
+  if (appState.licenseMode !== 'secure') return Date.now();
+  const last = Number(localStorage.getItem(APP_CONFIG.storageKeyPrefix + 'lastSeen')) || 0;
+  return Math.max(Date.now(), last);
+}
+function touchClock() {
+  if (appState.licenseMode === 'secure') {
+    localStorage.setItem(APP_CONFIG.storageKeyPrefix + 'lastSeen', String(trustedNow()));
+  }
+}
+function syncClock(serverNow) {
+  if (Number.isFinite(serverNow)) localStorage.setItem(APP_CONFIG.storageKeyPrefix + 'lastSeen', String(serverNow));
+}
+
+function applyLicensePayload(p) {
+  const now = trustedNow();
+  appState.licenseKind = p.k;
+  appState.licenseIat = p.iat || 0;
+  appState.licenseExp = p.exp || 0;
+  appState.isActivated = p.k === 'pro' && now < p.exp;
+  appState.needsRevalidate = p.k === 'pro' && now >= p.exp;
+  appState.trialEndsAt = p.k === 'trial' ? p.exp : null;
+}
+
+async function acceptToken(resp) {
+  if (!resp || !resp.token) return false;
+  const payload = await LicenseSecure.verify(resp.token);
+  if (!payload || payload.d !== appState.deviceId) return false;
+  await setPersistedValue('licenseToken', resp.token);
+  syncClock(Number(resp.now) || payload.iat);
+  appState.provisional = false;
+  applyLicensePayload(payload);
+  return true;
+}
+
+// Belum punya token: pindahkan lisensi lama (kode yang pernah disimpan) atau mulai trial dari server
+async function acquireInitialToken(skipLegacy = false) {
+  try {
+    if (!skipLegacy) {
+      const flag = await getPersistedValue('isActivated');
+      const code = await getPersistedValue('licenseCode');
+      if ((flag === 'true' || flag === true) && code) {
+        const r = await LicenseSecure.call({ action: 'activate', licenseCode: String(code), deviceId: appState.deviceId });
+        if (r && r.valid && (await acceptToken(r))) {
+          await setPersistedValue('isActivated', 'false');
+          await setPersistedValue('licenseCode', '');
+          return true;
+        }
+      }
+    }
+    const t = await LicenseSecure.call({ action: 'trial', deviceId: appState.deviceId });
+    if (t && t.token && (await acceptToken(t))) return true;
+    if (t && t.reason === 'rate') {
+      appState.licenseNote = t.message || '';
+      appState.trialEndsAt = 0;
+      appState.provisional = false;
+      return false;
+    }
+  } catch (err) {
+    /* offline atau server tidak terjangkau */
+  }
+  // Tanpa koneksi: trial lokal sementara, diselaraskan dengan server begitu online
+  appState.provisional = true;
+  appState.trialEndsAt = appState.firstLaunch + APP_CONFIG.trialDurationMs;
+  return false;
+}
+
+async function refreshLicense() {
+  if (!LicenseSecure.enabled || appState.licenseKind !== 'pro') return false;
+  const token = await getPersistedValue('licenseToken');
+  if (!token) return false;
+  try {
+    const r = await LicenseSecure.call({ action: 'refresh', token, deviceId: appState.deviceId });
+    if (r && (r.revoked || r.reason === 'revoked' || r.reason === 'token')) {
+      syncClock(Number(r.now));
+      await setPersistedValue('licenseToken', '');
+      appState.isActivated = false;
+      appState.licenseKind = null;
+      appState.needsRevalidate = false;
+      await acquireInitialToken(true);
+      updateTrialUI();
+      return false;
+    }
+    if (r && r.valid && (await acceptToken(r))) {
+      updateTrialUI();
+      return true;
+    }
+  } catch (err) {
+    /* offline: token yang ada tetap dipakai sampai kedaluwarsa */
+  }
+  updateTrialUI();
+  return false;
+}
+
+async function initLicenseSecure() {
+  appState.licenseMode = 'secure';
+  touchClock();
+  setInterval(touchClock, 60 * 1000);
+
+  const stored = await getPersistedValue('licenseToken');
+  let payload = stored ? await LicenseSecure.verify(stored) : null;
+  if (payload && payload.d !== appState.deviceId) payload = null;
+
+  if (payload) applyLicensePayload(payload);
+  else await acquireInitialToken();
+
+  if (appState.licenseKind === 'pro') {
+    if (appState.needsRevalidate) await refreshLicense();
+    else if (trustedNow() - appState.licenseIat > 7 * DAY_MS) refreshLicense();
+  }
+}
+
+function getTrialRemainingMs() {
+  if (appState.licenseMode === 'secure' || appState.provisional) {
+    return (appState.trialEndsAt || 0) - trustedNow();
+  }
+  return APP_CONFIG.trialDurationMs - (Date.now() - appState.firstLaunch);
 }
 
 async function initTrialAndDevice() {
@@ -232,8 +413,13 @@ async function initTrialAndDevice() {
   }
   appState.firstLaunch = Number(firstLaunch);
 
-  const activated = await getPersistedValue('isActivated');
-  appState.isActivated = activated === 'true' || activated === true;
+  if (LicenseSecure.enabled) {
+    await initLicenseSecure();
+  } else {
+    console.warn('Mode lisensi lama aktif (licensePublicKey belum diisi): status Pro bisa diubah lewat DevTools.');
+    const activated = await getPersistedValue('isActivated');
+    appState.isActivated = activated === 'true' || activated === true;
+  }
 
   const savedOffset = localStorage.getItem(APP_CONFIG.storageKeyPrefix + 'offset');
   const offsetSlider = document.getElementById('offsetSlider');
@@ -258,7 +444,7 @@ async function initTrialAndDevice() {
   renderLocalHistory();
 }
 
-function openUpgradeModal(isExpired = false) {
+function openUpgradeModal(isExpired = false, reason = '') {
   const paywallModal = document.getElementById('paywallModal');
   if (!paywallModal) return;
 
@@ -268,7 +454,19 @@ function openUpgradeModal(isExpired = false) {
   });
 
   const titleEl = document.getElementById('paywallTitle');
-  if (titleEl) titleEl.textContent = isExpired ? 'Masa trial 3 hari selesai' : 'Upgrade ke ZenBeat Pro';
+  const infoEl = document.getElementById('paywallInfo');
+  const revalidateBtn = document.getElementById('revalidateBtn');
+  const revalidate = reason === 'revalidate';
+
+  if (titleEl) {
+    titleEl.textContent = revalidate ? 'Lisensi perlu divalidasi ulang' : (isExpired ? 'Masa trial 3 hari selesai' : 'Upgrade ke ZenBeat Pro');
+  }
+  if (infoEl) {
+    infoEl.textContent = revalidate
+      ? 'Lisensimu masih terdaftar, tetapi sudah lama tidak diverifikasi. Hubungkan internet lalu tekan Validasi ulang.'
+      : (appState.licenseNote || 'Aktifkan lisensi permanen untuk main tanpa batas di perangkat ini.');
+  }
+  if (revalidateBtn) revalidateBtn.classList.toggle('hidden', !revalidate);
 
   const closeBtn = document.getElementById('closeEarlyUpgradeBtn');
   if (closeBtn) closeBtn.classList.toggle('hidden', isExpired);
@@ -277,6 +475,13 @@ function openUpgradeModal(isExpired = false) {
 }
 
 function updateTrialUI() {
+  touchClock();
+  if (appState.licenseMode === 'secure' && appState.licenseKind === 'pro') {
+    // masa berlaku token dicek ulang setiap saat, bukan hanya saat dimuat
+    const valid = trustedNow() < appState.licenseExp;
+    appState.isActivated = valid;
+    appState.needsRevalidate = !valid;
+  }
   syncLicenseUI();
   const badge = document.getElementById('trialBadge');
   if (!badge) return true;
@@ -289,8 +494,18 @@ function updateTrialUI() {
     return true;
   }
 
-  const elapsed = Date.now() - appState.firstLaunch;
-  const remaining = APP_CONFIG.trialDurationMs - elapsed;
+  if (appState.needsRevalidate) {
+    badge.textContent = 'Validasi ulang';
+    badge.style.cursor = 'pointer';
+    badge.onclick = () => {
+      serverAudioManager.playSfx('buttonClick');
+      openUpgradeModal(true, 'revalidate');
+    };
+    openUpgradeModal(true, 'revalidate');
+    return false;
+  }
+
+  const remaining = getTrialRemainingMs();
 
   if (remaining <= 0) {
     badge.textContent = 'Trial habis — beli';
@@ -1132,6 +1347,7 @@ class RhythmEngine {
     this.lastFrameTime = 0;
     this.lastBassEnergy = 0;
     this.songDuration = 60;
+    this.lastLaneDownAt = [-1e9, -1e9, -1e9, -1e9];
     this.chart = [];
     this.chartIdx = 0;
     this.songTime = 0;
@@ -1335,6 +1551,7 @@ class RhythmEngine {
     this.lastAT = -1;
     this.startWait = 0;
     this.endWait = 0;
+    this.lastLaneDownAt = [-1e9, -1e9, -1e9, -1e9];
 
     // Chart disusun dari hasil analisis lagu (deterministik per lagu dan level)
     const levelCfg = APP_CONFIG.levels[appState.selectedLevel];
@@ -1541,7 +1758,8 @@ class RhythmEngine {
       if (c.type === 'hold') {
         note.length = c.dur * speed;
         note.holding = false;
-        note.tickAccum = 0;
+        note.ticks = c.ticks || [];
+        note.tickIdx = 0;
       } else if (c.type === 'slide') {
         note.span = c.span;
       }
@@ -1554,28 +1772,46 @@ class RhythmEngine {
     this.laneFlashes[lane] = 1.0;
     this.padPressScale[lane] = 0.88;
 
+    // Anti-dobel: satu sentuhan/tombol kadang terkirim dua kali dan "memakan" balok di dekatnya
+    const nowMs = performance.now();
+    if (nowMs - this.lastLaneDownAt[lane] < 45) return null;
+    this.lastLaneDownAt[lane] = nowMs;
+
     const offsetPixels = (appState.audioOffset / 1000) * APP_CONFIG.levels[appState.selectedLevel].speed;
     const targetY = this.hitLineY + offsetPixels;
 
-    let closestNote = null;
-    let minDiff = Infinity;
+    let tapNote = null, tapDiff = Infinity;
+    let slideNote = null, slideDiff = Infinity;
 
     for (const note of this.notes) {
       if (note.hit || note.holding) continue;
-      const isLaneCovered = note.type === 'slide'
-        ? (lane === note.lane || lane === note.lane + 1)
-        : (note.lane === lane);
-
-      if (isLaneCovered) {
-        const diff = Math.abs(note.y - targetY);
-        if (diff < minDiff) {
-          minDiff = diff;
-          closestNote = note;
+      const diff = Math.abs(note.y - targetY);
+      if (note.type === 'slide') {
+        if ((lane === note.lane || lane === note.lane + 1) && diff < slideDiff) {
+          slideDiff = diff;
+          slideNote = note;
         }
+      } else if (note.lane === lane && diff < tapDiff) {
+        tapDiff = diff;
+        tapNote = note;
       }
     }
 
-    if (!closestNote || minDiff > 105) return null;
+    // Tap/hold didahulukan. Slide hanya "tersentuh" jika tidak ada tap yang layak dalam jangkauan,
+    // supaya ketukan tidak diserap slide lalu keduanya hilang sebagai MISS.
+    let closestNote = null;
+    let minDiff = Infinity;
+    if (tapNote && tapDiff <= 105 && (tapDiff <= 78 || tapDiff <= slideDiff)) {
+      closestNote = tapNote;
+      minDiff = tapDiff;
+    } else if (slideNote && slideDiff <= 105) {
+      closestNote = slideNote;
+      minDiff = slideDiff;
+    } else if (tapNote && tapDiff <= 105) {
+      closestNote = tapNote;
+      minDiff = tapDiff;
+    }
+    if (!closestNote) return null;
 
     if (closestNote.type === 'slide') {
       closestNote.touched = true;
@@ -1652,9 +1888,10 @@ class RhythmEngine {
         note.hit = true;
 
         if (tailY >= this.hitLineY - 55) {
+          // dilepas tepat di ujung: beat yang tersisa tetap dihitung PERFECT
+          const remaining = Math.max(0, (note.ticks ? note.ticks.length : 0) - (note.tickIdx || 0));
+          for (let i = 0; i < remaining; i++) this.registerHoldBeat(lane, true);
           this.score += 100;
-          this.combo++;
-          this.perfectCount++;
           if (this.combo > this.maxCombo) this.maxCombo = this.combo;
           this.showFeedback('HOLD CLEAR!', 'anim-good');
           serverAudioManager.playSfx('perfect');
@@ -1669,6 +1906,27 @@ class RhythmEngine {
         }
       }
     }
+  }
+
+  // Satu beat nada tahan = satu PERFECT (skor, combo, dan streak sama seperti ketukan biasa)
+  registerHoldBeat(lane, silent = false) {
+    this.missStreak = 0;
+    this.score += 100 + this.combo * 5;
+    this.combo++;
+    this.perfectStreak++;
+    this.perfectCount++;
+    this.life = Math.min(100, this.life + (this.combo % 10 === 0 ? 4 : 1));
+    if (this.combo > this.maxCombo) this.maxCombo = this.combo;
+    this.comboPulse = 1.25;
+    if (!silent) {
+      const isMilestone = this.perfectStreak >= 25 && this.perfectStreak % 25 === 0;
+      const label = this.perfectStreak > 1 ? `PERFECT x${this.perfectStreak}` : 'PERFECT!';
+      this.showFeedback(label, isMilestone ? 'anim-perfect-milestone' : 'anim-perfect');
+      serverAudioManager.playSfx('tap');
+      this.spawnHitEffects(lane);
+    }
+    this.updateScoreHUD();
+    this.updateLifeUI();
   }
 
   evaluateTimingHit(minDiff, lane, customPerfectText = null) {
@@ -1824,23 +2082,17 @@ class RhythmEngine {
       if (note.type === 'hold' && note.holding) {
         this.laneFlashes[note.lane] = 0.85;
         this.padPressScale[note.lane] = 0.9;
-        note.tickAccum += dt;
-        if (note.tickAccum >= 0.08) {
-          note.tickAccum = 0;
-          this.combo++;
-          if (this.combo > this.maxCombo) this.maxCombo = this.combo;
-          this.comboPulse = 1.25;
-          this.score += 20 + Math.floor(this.combo * 1.5);
-          this.updateScoreHUD();
-          this.spawnHitEffects(note.lane);
+        // Combo dan PERFECT dihitung per beat selama nada ditahan
+        const ticks = note.ticks || [];
+        while (note.tickIdx < ticks.length && st >= ticks[note.tickIdx]) {
+          note.tickIdx++;
+          this.registerHoldBeat(note.lane);
         }
 
         if (note.y - note.length >= this.hitLineY) {
           note.holding = false;
           note.hit = true;
           this.score += 120;
-          this.combo++;
-          if (this.combo > this.maxCombo) this.maxCombo = this.combo;
           this.life = Math.min(100, this.life + 3);
           this.showFeedback('HOLD PERFECT!', 'anim-perfect');
           serverAudioManager.playSfx('perfect');
@@ -2328,7 +2580,15 @@ function exitFullScreenToMenu() {
   serverAudioManager.startMenuTheme();
 }
 
+function lockZoomGestures() {
+  const stop = (e) => e.preventDefault();
+  ['gesturestart', 'gesturechange', 'gestureend'].forEach((ev) => document.addEventListener(ev, stop, { passive: false }));
+  document.addEventListener('touchmove', (e) => { if (e.touches && e.touches.length > 1) e.preventDefault(); }, { passive: false });
+  window.addEventListener('wheel', (e) => { if (e.ctrlKey) e.preventDefault(); }, { passive: false });
+}
+
 function setupUIEvents() {
+  lockZoomGestures();
   serverAudioManager.init();
   rhythmEngine = new RhythmEngine();
 
@@ -2606,6 +2866,34 @@ function setupUIEvents() {
     });
   }
 
+  const revalidateBtn = document.getElementById('revalidateBtn');
+  if (revalidateBtn) {
+    revalidateBtn.addEventListener('click', async () => {
+      serverAudioManager.playSfx('buttonClick');
+      revalidateBtn.disabled = true;
+      revalidateBtn.textContent = 'Memeriksa...';
+      const ok = await refreshLicense();
+      revalidateBtn.disabled = false;
+      revalidateBtn.textContent = 'Validasi ulang lisensi';
+      if (ok) {
+        const paywallModal = document.getElementById('paywallModal');
+        if (paywallModal) paywallModal.classList.add('hidden');
+      } else {
+        alert('Belum berhasil. Pastikan internet aktif lalu coba lagi.');
+      }
+    });
+  }
+
+  window.addEventListener('online', async () => {
+    if (!LicenseSecure.enabled) return;
+    if (appState.provisional) {
+      await acquireInitialToken();
+      updateTrialUI();
+    } else if (appState.licenseKind === 'pro' && (appState.needsRevalidate || trustedNow() - appState.licenseIat > 7 * DAY_MS)) {
+      await refreshLicense();
+    }
+  });
+
   const closeEarlyBtn = document.getElementById('closeEarlyUpgradeBtn');
   if (closeEarlyBtn) {
     closeEarlyBtn.addEventListener('click', () => {
@@ -2633,6 +2921,28 @@ function syncLicenseUI() {
 async function activateLicense(code, btn, idleText, busyText) {
   if (!code) {
     alert('Masukkan kode aktivasi dari Lynk.id terlebih dahulu.');
+    return;
+  }
+
+  if (LicenseSecure.enabled) {
+    btn.disabled = true;
+    btn.textContent = busyText;
+    try {
+      const r = await LicenseSecure.call({ action: 'activate', licenseCode: code, deviceId: appState.deviceId });
+      if (r && r.valid && (await acceptToken(r)) && appState.isActivated) {
+        updateTrialUI();
+        const paywallModal = document.getElementById('paywallModal');
+        if (paywallModal) paywallModal.classList.add('hidden');
+        alert(r.message || 'Lisensi berhasil diaktifkan.');
+      } else {
+        alert((r && r.message) || 'Kode aktivasi tidak valid atau tidak bisa diverifikasi.');
+      }
+    } catch (err) {
+      alert('Gagal terhubung ke server aktivasi. Pastikan koneksi internet aktif.');
+    } finally {
+      btn.disabled = false;
+      btn.textContent = idleText;
+    }
     return;
   }
 

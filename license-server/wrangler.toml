@@ -1,0 +1,13 @@
+name = "zenbeat-license-v2"
+main = "worker.js"
+compatibility_date = "2024-11-01"
+
+[vars]
+# Alamat situs game (tanpa garis miring di akhir). Pisahkan dengan koma jika lebih dari satu.
+ALLOWED_ORIGINS = "https://michaeladitya777.github.io"
+DEFAULT_MAX_DEVICES = "2"
+TRIALS_PER_IP_PER_DAY = "5"
+
+[[kv_namespaces]]
+binding = "LICENSES"
+id = "GANTI_DENGAN_ID_KV_NAMESPACE"
