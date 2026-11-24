@@ -4,7 +4,7 @@ const APP_CONFIG = {
   // Kunci publik untuk memverifikasi token lisensi (hasil: node license-server/tools/generate-keys.mjs).
   // null = mode lama (kurang aman). Isi bersama licenseApiUrl setelah license-server dipasang.
   licensePublicKey: null,
-  lynkStoreUrl: 'https://lynk.id/pulangkantor6',
+  lynkStoreUrl: 'http://lynk.id/pulangkantor6/pepx58q987o2/checkout',
   trialDurationMs: 3 * 24 * 60 * 60 * 1000, // 3 Hari (72 Jam)
   minSongDurationSec: 30,                   // Minimal 30 detik
   maxSongDurationSec: 10 * 60,              // Maksimal 10 menit (600 detik)
